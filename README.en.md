@@ -41,7 +41,7 @@ TxRay focuses on **detect + explain**:
 - Detect NFT `setApprovalForAll` collection-wide and ERC-721 token-specific approvals; verify the latter against current `ownerOf` / `getApproved` state rather than treating historical events as current.
 - Inspect Uniswap Permit2 internal allowances.
 - Support Ethereum, Base, Arbitrum, and Optimism.
-- Estimate `$ at risk` with `min(current balance, allowance)`, using server-side batched and cached CoinGecko pricing plus explicit complete, partial, or unavailable coverage states.
+- Estimate `$ at risk` for ERC-20 with `min(current balance, allowance)`; Permit2 is also capped by the ERC-20 allowance to Permit2, with failed reads shown as unknown rather than zero. USD pricing is batched and cached server-side, with explicit complete, partial, or unavailable coverage states.
 - Classify spender risk:
   - known trusted contracts,
   - EOA spenders,

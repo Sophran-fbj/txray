@@ -101,6 +101,15 @@ export function ApprovalRow({
             {formatExpiry(approval.expiration, locale, t.approvals)}
           </div>
         )}
+        {approval.kind === 'permit2' && (
+          <div className="text-xs text-base-content/70">
+            {approval.upstreamAllowance === undefined
+              ? t.approvals.upstreamUnknown
+              : approval.upstreamAllowance === 0n
+                ? t.approvals.upstreamZero
+                : t.approvals.upstreamLimited}
+          </div>
+        )}
         {approval.kind !== 'nft' && approval.kind !== 'nft-token' && (
           <AtRisk approval={approval} usdPrice={usdPrice} />
         )}

@@ -41,7 +41,7 @@ TxRay 的核心是 **检测 + 解释**：
 - 检测 NFT `setApprovalForAll` 整集合授权和 ERC-721 单件 `Approval`；单件授权以当前 `ownerOf` / `getApproved` 校验，历史事件不直接当作现状。
 - 检查 Uniswap Permit2 内部授权，而不只看表层的 ERC-20 approve。
 - 支持 Ethereum、Base、Arbitrum、Optimism。
-- 估算 `$ at risk`：用 `min(当前余额, 授权额度)` 计算实际暴露数量，通过服务端批量查询并缓存 CoinGecko 美元价格；页面明确展示完整、部分或不可用的价格覆盖状态。
+- 估算 `$ at risk`：普通 ERC-20 用 `min(当前余额, 授权额度)`；Permit2 还受 ERC-20 对 Permit2 的底层授权约束，读取失败时标为未知，不会当作零。通过服务端批量查询并缓存 CoinGecko 美元价格；页面明确展示完整、部分或不可用的价格覆盖状态。
 - 识别 spender 风险：
   - 已知可信合约；
   - EOA spender；

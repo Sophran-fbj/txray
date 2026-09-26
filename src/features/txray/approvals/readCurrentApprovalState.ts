@@ -31,6 +31,7 @@ export interface CurrentApprovalState {
   nft: ApprovalPair[];
   nftToken: LiveNftTokenApproval[];
   permit2: LivePermit2Approval[];
+  permit2TokenAllowances: Record<string, bigint | undefined>;
   failedReads: number;
 }
 
@@ -97,7 +98,7 @@ export async function readCurrentApprovalState(
     ),
   ]);
 
-  const failedReads =
+  let failedReads =
     allowances.filter((result) => readBigIntResult(result) === undefined).length +
     nftApproved.filter((result) => readBooleanResult(result) === undefined).length +
     index.nftToken.filter((_, itemIndex) =>
@@ -132,5 +133,27 @@ export async function readCurrentApprovalState(
       : [];
   });
 
-  return { erc20, nft, nftToken, permit2, failedReads };
+  const permit2Tokens = [...new Set(permit2.map((item) => item.token.toLowerCase()))]
+    .map((token) => getAddress(token));
+  const upstreamResults = await runInChunks<Address, unknown>(
+    permit2Tokens,
+    MULTICALL_CHUNK_SIZE,
+    (chunk) => client.multicall({
+      allowFailure: true,
+      contracts: chunk.map((token) => ({
+        address: token,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [owner, PERMIT2_ADDRESS],
+      })),
+    }),
+  );
+  const permit2TokenAllowances: Record<string, bigint | undefined> = {};
+  permit2Tokens.forEach((token, index) => {
+    const allowance = readBigIntResult(upstreamResults[index]);
+    permit2TokenAllowances[token.toLowerCase()] = allowance;
+    if (allowance === undefined) failedReads += 1;
+  });
+
+  return { erc20, nft, nftToken, permit2, permit2TokenAllowances, failedReads };
 }

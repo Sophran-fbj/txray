@@ -38,6 +38,7 @@ export interface Permit2Approval extends FungibleApprovalDisplay {
   amount: bigint;
   expiration: number;
   unlimited: boolean;
+  upstreamAllowance?: bigint;
 }
 
 export type Approval = Erc20Approval | NftApproval | NftTokenApproval | Permit2Approval;

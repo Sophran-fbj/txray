@@ -38,6 +38,7 @@ export const demoApprovals: Approval[] = [
     amountText: '无限',
     atRiskAmountRaw: 1500000000000000000n,
     atRiskAmountText: '1.5',
+    upstreamAllowance: 3000000000000000000n,
   },
   {
     kind: 'nft',

@@ -24,6 +24,15 @@ import type {
 const UNLIMITED_THRESHOLD = 2n ** 200n;
 const MULTICALL_CHUNK_SIZE = 100;
 
+export function spendablePermit2Amount(
+  internal: bigint,
+  balance: bigint | undefined,
+  upstream: bigint | undefined,
+): bigint | undefined {
+  if (balance === undefined || upstream === undefined) return undefined;
+  return [internal, balance, upstream].reduce((low, value) => value < low ? value : low);
+}
+
 export interface EnrichedApprovals {
   approvals: Approval[];
   failedDecimals: number;
@@ -94,7 +103,7 @@ export async function enrichApprovals(
     (result) => readBigIntResult(result) === undefined,
   ).length;
 
-  function readDisplay(index: number, rawAmount: bigint): FungibleApprovalDisplay {
+  function readDisplay(index: number, rawAmount: bigint, upstream?: { allowance: bigint | undefined }): FungibleApprovalDisplay {
     const token = fungible[index].token;
     const symbolResult = readSuccessResult(metadata[index * 2]);
     const decimalsResult = readSuccessResult(metadata[index * 2 + 1]);
@@ -107,8 +116,10 @@ export async function enrichApprovals(
         ? `${rawAmount.toString()} raw`
         : formatUnits(rawAmount, decimals);
 
-    if (balance === undefined) return { symbol, decimals, amountText };
-    const atRiskAmountRaw = rawAmount < balance ? rawAmount : balance;
+    const atRiskAmountRaw = upstream
+      ? spendablePermit2Amount(rawAmount, balance, upstream.allowance)
+      : balance === undefined ? undefined : rawAmount < balance ? rawAmount : balance;
+    if (atRiskAmountRaw === undefined) return { symbol, decimals, amountText };
     return {
       symbol,
       decimals,
@@ -138,7 +149,10 @@ export async function enrichApprovals(
     amount: pair.amount,
     expiration: pair.expiration,
     unlimited: pair.amount > PERMIT2_UNLIMITED_THRESHOLD,
-    ...readDisplay(current.erc20.length + index, pair.amount),
+    upstreamAllowance: current.permit2TokenAllowances[pair.token.toLowerCase()],
+    ...readDisplay(current.erc20.length + index, pair.amount, {
+      allowance: current.permit2TokenAllowances[pair.token.toLowerCase()],
+    }),
   }));
   const nft: NftApproval[] = current.nft.map((pair, index) => {
     const symbolResult = readSuccessResult(nftMetadata[index]);
