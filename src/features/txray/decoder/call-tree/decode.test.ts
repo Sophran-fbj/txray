@@ -51,7 +51,7 @@ describe('buildCallTree: 普通单层调用', () => {
     expect(result.root.selector).toBe('0x095ea7b3');
     expect(result.root.params).toHaveLength(2);
     expect(result.root.params[0]).toMatchObject({
-      name: 'spender',
+      name: 'approvedOrSpender',
       value: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
       isAddress: true,
     });

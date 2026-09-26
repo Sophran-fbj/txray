@@ -66,7 +66,7 @@ test('单层 calldata 显示调用树与静态解码声明', async ({ page }) =>
   await expect(page.getByTestId('static-decode-notice')).toContainText('静态解码');
   await expect(page.getByTestId('call-node')).toHaveCount(1);
   await expect(page.getByTestId('high-risk-badge')).toBeVisible();
-  await expect(page.getByText('发现无限额度授权（max）')).toBeVisible();
+  await expect(page.getByText('approve 参数为 uint 最大值（需确认合约类型）')).toBeVisible();
 });
 
 test('产品示例可直接展开递归调用并进入解释文章', async ({ page }) => {
@@ -74,7 +74,7 @@ test('产品示例可直接展开递归调用并进入解释文章', async ({ pa
   await page.getByRole('button', { name: '嵌套调用示例' }).click();
 
   await expect(page.getByTestId('call-node')).toHaveCount(3);
-  await expect(page.getByText('发现无限额度授权（max）')).toBeVisible();
+  await expect(page.getByText('approve 参数为 uint 最大值（需确认合约类型）')).toBeVisible();
   await expect(
     page.getByRole('link', { name: '了解批量调用为什么容易隐藏风险' }),
   ).toHaveAttribute('href', '/articles/why-batched-transactions-hide-risk');
@@ -86,7 +86,7 @@ test('嵌套 multicall：高风险路径默认展开并给出批量提示', asyn
   await expect(page.getByText('Multicall3 · aggregate3 批量调用')).toBeVisible();
   // 子调用 approve 默认可见（高风险路径默认展开）
   await expect(page.getByTestId('call-node')).toHaveCount(2);
-  await expect(page.getByText('发现无限额度授权（max）')).toBeVisible();
+  await expect(page.getByText('approve 参数为 uint 最大值（需确认合约类型）')).toBeVisible();
   await expect(page.getByText('批量调用中混入高风险授权')).toBeVisible();
   await expect(page.getByTestId('stop-reason')).toHaveCount(0);
 });
@@ -145,7 +145,7 @@ test('ERC-4337 handleOps 展开 UserOperation 与内部调用', async ({ page })
   await expect(page.getByText('ERC-4337 EntryPoint · handleOps')).toBeVisible();
   await expect(page.getByText('UserOperation').first()).toBeVisible();
   await expect(page.getByText('智能账户 · execute')).toBeVisible();
-  await expect(page.getByText(/发现无限额度授权/)).toBeVisible();
+  await expect(page.getByText(/approve 参数为 uint 最大值/)).toBeVisible();
 });
 
 test('键盘可展开与收起调用树', async ({ page }) => {
@@ -172,7 +172,7 @@ test('中英文切换覆盖调用树文案', async ({ page }) => {
     'not a transaction simulation',
   );
   await expect(
-    page.getByText('Unlimited (max) token allowance found'),
+    page.getByText('approve uses uint max (verify contract type)'),
   ).toBeVisible();
 
   await page.getByRole('button', { name: '中文' }).click();

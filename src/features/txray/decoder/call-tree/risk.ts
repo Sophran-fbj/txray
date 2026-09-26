@@ -118,10 +118,11 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   const selector = node.selector;
   const nowMs = options.nowMs;
 
-  // ERC-20 max allowance：approve(spender, MAX)（选择器为准）。
+  // The selector is shared by ERC-20 and ERC-721; the finding is conditional.
   if (selector === '0x095ea7b3') {
-    const amount = paramByName(node, 'amount') ?? paramByName(node, 'value');
-    const spender = paramByName(node, 'spender');
+    const amount = paramByName(node, 'amountOrTokenId') ??
+      paramByName(node, 'amount') ?? paramByName(node, 'value');
+    const spender = paramByName(node, 'approvedOrSpender') ?? paramByName(node, 'spender');
     if (amount && isMaxWidthUint(amount.type, amount.value)) {
       results.push(
         finding('erc20-max-allowance', 'high', node, {

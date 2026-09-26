@@ -53,7 +53,7 @@ test('decoder localizes and decodes known calldata without a wallet', async ({ p
   await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('⚠️ High risk', { exact: true })).toBeVisible();
   await expect(page.getByText('Unlimited (max uint256)')).toBeVisible();
-  await expect(page.getByText(/Allows the spender to use your tokens/)).toBeVisible();
+  await expect(page.getByText(/Calldata alone cannot establish the target contract type/)).toBeVisible();
 });
 
 test('decoder parameters use cards on mobile', async ({ page }, testInfo) => {

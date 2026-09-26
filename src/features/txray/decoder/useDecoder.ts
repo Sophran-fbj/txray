@@ -118,8 +118,8 @@ export async function decodeInput(
     try {
       const item = parseAbiItem(`function ${signature}`);
       if (item.type === 'function') {
-        functionName = item.name;
         const decoded = decodeFunctionData({ abi: [item], data: calldata });
+        functionName = item.name;
         const args = decoded.args ?? [];
         params = item.inputs.map((input, index) => ({
           name: input.name,
@@ -133,6 +133,23 @@ export async function decodeInput(
     }
   }
 
+  let danger: Danger = functionName ? known?.danger ?? 'none' : 'none';
+  let explainKey: KnownExplainKey | undefined = functionName ? known?.explainKey : undefined;
+  if (functionName && selector === '0x095ea7b3') {
+    // approve(address,uint256) is shared by ERC-20 and ERC-721. Without a
+    // verified target ABI, zero can mean ERC-20 revocation or NFT tokenId 0.
+    if (params[1]?.value === '0') {
+      danger = 'medium';
+      explainKey = 'approveZeroAmbiguous';
+    } else if (isMaxUintValue('uint256', params[1]?.value ?? '')) {
+      danger = 'high';
+    }
+  }
+  if (functionName && selector === '0xa22cb465' && params[1]?.value === 'false') {
+    danger = 'none';
+    explainKey = 'approvalForAllRevoked';
+  }
+
   return {
     source,
     to,
@@ -140,8 +157,8 @@ export async function decodeInput(
     signature,
     functionName,
     params,
-    danger: known?.danger ?? 'none',
-    explainKey: known?.explainKey,
+    danger,
+    explainKey,
     raw: calldata,
     txValue,
   };

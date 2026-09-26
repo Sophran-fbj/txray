@@ -170,8 +170,10 @@ export const messages = {
       rawCalldata: '原始 calldata',
       unlimited: (type: string) => `无限（max ${type}）`,
       knownExplains: {
-        approve: '授权 spender 花费你的代币。无限额度可能让其转走全部余额，请确认 spender 可信。',
+        approve: 'approve(address,uint256) 可能是 ERC-20 额度授权，也可能是 ERC-721 单件 NFT 授权；仅凭 calldata 无法确认目标合约类型。请核对被授权地址和目标合约。',
+        approveZeroAmbiguous: '第二个参数为 0：对 ERC-20 可能是清零额度，对 ERC-721 则可能是授权 tokenId 0。未确认目标合约类型前，不能断言是撤销。',
         approvalForAll: '把某个 NFT 集合的全部处置权交给 operator，属于高风险权限。',
+        approvalForAllRevoked: 'approved 为 false，表示撤销该 operator 的整集合授权，不是新增授权。',
         permit: '通过离线签名授权 spender，无需单独发送 approve 交易。',
         transferFrom: '从 from 向 to 转账，通常意味着正在使用已有授权。',
         increaseAllowance: '增加 spender 的可花费额度。',
@@ -262,7 +264,7 @@ export const messages = {
           info: '提示',
         },
         riskTitles: {
-          'erc20-max-allowance': '发现无限额度授权（max）',
+          'erc20-max-allowance': 'approve 参数为 uint 最大值（需确认合约类型）',
           'erc20-increase-allowance': '增加 spender 额度',
           'nft-approval-for-all': 'NFT 全集合授权',
           'erc20-permit': 'ERC-20 permit 离线授权',
@@ -283,7 +285,7 @@ export const messages = {
         },
         riskExplains: {
           'erc20-max-allowance':
-            '该调用把代币额度授权为 uint 最大值，等效于无限授权；spender 在授权有效期内可能转走全部余额。建议核实 spender 身份。',
+            '如果目标是 ERC-20，uint 最大值通常等效于无限额度授权；ERC-721 的相同选择器表示单件 NFT 授权。请核实目标合约类型和被授权地址。',
           'erc20-increase-allowance':
             '该调用会增加 spender 的可花费额度，请确认额度变化符合预期。',
           'nft-approval-for-all':
@@ -573,8 +575,10 @@ export const messages = {
       rawCalldata: 'Raw calldata',
       unlimited: (type: string) => `Unlimited (max ${type})`,
       knownExplains: {
-        approve: 'Allows the spender to use your tokens. An unlimited amount can expose the full balance, so verify the spender.',
+        approve: 'approve(address,uint256) can be an ERC-20 allowance or a single-token ERC-721 approval. Calldata alone cannot establish the target contract type; verify the target and approved address.',
+        approveZeroAmbiguous: 'The second argument is 0: this may clear an ERC-20 allowance, or approve ERC-721 tokenId 0. Do not call it a revocation without verifying the target contract type.',
         approvalForAll: 'Gives an operator control over an entire NFT collection. This is a high-impact permission.',
+        approvalForAllRevoked: 'approved is false, so this revokes the operator-wide approval rather than granting one.',
         permit: 'Grants spending permission through an offchain signature without a separate approve transaction.',
         transferFrom: 'Moves assets from from to to, usually by consuming an existing approval.',
         increaseAllowance: 'Increases the amount the spender may use.',
@@ -666,7 +670,7 @@ export const messages = {
           info: 'Info',
         },
         riskTitles: {
-          'erc20-max-allowance': 'Unlimited (max) token allowance found',
+          'erc20-max-allowance': 'approve uses uint max (verify contract type)',
           'erc20-increase-allowance': 'Spender allowance increase',
           'nft-approval-for-all': 'Whole-collection NFT approval',
           'erc20-permit': 'ERC-20 permit approval',
@@ -687,7 +691,7 @@ export const messages = {
         },
         riskExplains: {
           'erc20-max-allowance':
-            'This call approves the uint maximum amount, which is effectively an unlimited allowance. The spender may be able to move the full balance while the approval is valid. Verify the spender.',
+            'If the target is ERC-20, uint max is usually an unlimited allowance. The same selector on ERC-721 approves one NFT. Verify the target contract type and approved address.',
           'erc20-increase-allowance':
             'This call increases the amount the spender may use. Confirm the change matches your expectation.',
           'nft-approval-for-all':

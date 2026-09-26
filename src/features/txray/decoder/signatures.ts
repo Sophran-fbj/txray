@@ -5,7 +5,9 @@
 export type Danger = 'high' | 'medium' | 'none';
 export type KnownExplainKey =
   | 'approve'
+  | 'approveZeroAmbiguous'
   | 'approvalForAll'
+  | 'approvalForAllRevoked'
   | 'permit'
   | 'transferFrom'
   | 'increaseAllowance'
@@ -20,8 +22,8 @@ export interface KnownSig {
 
 export const KNOWN_SIGNATURES: Record<string, KnownSig> = {
   '0x095ea7b3': {
-    signature: 'approve(address spender, uint256 amount)',
-    danger: 'high',
+    signature: 'approve(address approvedOrSpender, uint256 amountOrTokenId)',
+    danger: 'medium',
     explainKey: 'approve',
   },
   '0xa22cb465': {

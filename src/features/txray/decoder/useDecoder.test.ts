@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PublicClient } from 'viem';
+import { encodeFunctionData, parseAbiItem, type PublicClient } from 'viem';
 import { decodeInput, isMaxUintValue } from './useDecoder';
 
 const APPROVE_MAX =
@@ -23,6 +23,40 @@ describe('decodeInput', () => {
     await expect(decodeInput(undefined, '0x1234')).rejects.toThrow(
       '不是有效的 calldata',
     );
+  });
+
+  it('does not call a revocation an NFT-wide grant', async () => {
+    const data = encodeFunctionData({
+      abi: [parseAbiItem('function setApprovalForAll(address operator, bool approved)')],
+      args: ['0xE592427A0AEce92De3Edee1F18E0157C05861564', false],
+    });
+    const result = await decodeInput(undefined, data, vi.fn(), 'calldata');
+    expect(result.danger).toBe('none');
+    expect(result.explainKey).toBe('approvalForAllRevoked');
+  });
+
+  it('keeps approve(address, 0) ambiguous without the target contract type', async () => {
+    const data = encodeFunctionData({
+      abi: [parseAbiItem('function approve(address spender, uint256 value)')],
+      args: ['0xE592427A0AEce92De3Edee1F18E0157C05861564', 0n],
+    });
+    const result = await decodeInput(undefined, data, vi.fn(), 'calldata');
+    expect(result.danger).toBe('medium');
+    expect(result.explainKey).toBe('approveZeroAmbiguous');
+  });
+
+  it('does not label an ordinary approve call high-risk without target ABI', async () => {
+    const data = encodeFunctionData({
+      abi: [parseAbiItem('function approve(address spender, uint256 value)')],
+      args: ['0xE592427A0AEce92De3Edee1F18E0157C05861564', 25n],
+    });
+    expect((await decodeInput(undefined, data, vi.fn(), 'calldata')).danger).toBe('medium');
+  });
+
+  it('does not present a selector-only candidate as a decoded function', async () => {
+    const result = await decodeInput(undefined, '0x095ea7b3', vi.fn(), 'calldata');
+    expect(result.functionName).toBeNull();
+    expect(result.explainKey).toBeUndefined();
   });
 
   it('keeps 32-byte calldata as calldata when the mode is explicit', async () => {
