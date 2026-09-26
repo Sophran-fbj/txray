@@ -1,4 +1,4 @@
-import { erc20Abi, erc721Abi, type Address } from 'viem';
+import { erc20Abi, erc721Abi, zeroAddress, type Address } from 'viem';
 import type { Approval } from './useApprovals';
 import { PERMIT2_ADDRESS, permit2Abi } from './permit2';
 
@@ -16,6 +16,13 @@ export type RevokeCall =
       abi: typeof erc721Abi;
       functionName: 'setApprovalForAll';
       args: readonly [Address, false];
+    }
+  | {
+      kind: 'nft-token';
+      address: Address;
+      abi: typeof erc721Abi;
+      functionName: 'approve';
+      args: readonly [Address, bigint];
     }
   | {
       kind: 'permit2';
@@ -44,6 +51,16 @@ export function createRevokeCall(approval: Approval): RevokeCall {
       abi: erc721Abi,
       functionName: 'setApprovalForAll',
       args: [approval.spender, false],
+    };
+  }
+
+  if (approval.kind === 'nft-token') {
+    return {
+      kind: approval.kind,
+      address: approval.token,
+      abi: erc721Abi,
+      functionName: 'approve',
+      args: [zeroAddress, BigInt(approval.tokenId)],
     };
   }
 

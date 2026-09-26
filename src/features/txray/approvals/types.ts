@@ -25,6 +25,11 @@ export interface NftApproval {
   symbol: string;
 }
 
+export interface NftTokenApproval extends Omit<NftApproval, 'kind'> {
+  kind: 'nft-token';
+  tokenId: string;
+}
+
 export interface Permit2Approval extends FungibleApprovalDisplay {
   kind: 'permit2';
   id: string;
@@ -35,7 +40,7 @@ export interface Permit2Approval extends FungibleApprovalDisplay {
   unlimited: boolean;
 }
 
-export type Approval = Erc20Approval | NftApproval | Permit2Approval;
+export type Approval = Erc20Approval | NftApproval | NftTokenApproval | Permit2Approval;
 
 export type ApprovalWarning =
   | { code: 'index-truncated'; maxRecordsPerSource: number }

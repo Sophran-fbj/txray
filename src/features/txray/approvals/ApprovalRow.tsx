@@ -52,6 +52,9 @@ export function ApprovalRow({
               {t.approvals.nftCollection}
             </span>
           )}
+          {approval.kind === 'nft-token' && (
+            <span className="badge badge-ghost badge-sm">{t.approvals.nftToken}</span>
+          )}
           {approval.kind === 'permit2' && (
             <span className="badge badge-info badge-sm">Permit2</span>
           )}
@@ -86,6 +89,8 @@ export function ApprovalRow({
         <MobileLabel>{t.approvals.allowance}</MobileLabel>
         {approval.kind === 'nft' ? (
           <span className="badge badge-error badge-sm">{t.approvals.allNfts}</span>
+        ) : approval.kind === 'nft-token' ? (
+          <span className="font-mono text-sm">#{approval.tokenId}</span>
         ) : approval.unlimited ? (
           <span className="badge badge-error badge-sm">{t.approvals.unlimited}</span>
         ) : (
@@ -96,7 +101,7 @@ export function ApprovalRow({
             {formatExpiry(approval.expiration, locale, t.approvals)}
           </div>
         )}
-        {approval.kind !== 'nft' && (
+        {approval.kind !== 'nft' && approval.kind !== 'nft-token' && (
           <AtRisk approval={approval} usdPrice={usdPrice} />
         )}
       </td>

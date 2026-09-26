@@ -41,7 +41,8 @@ export function selectApprovals(
 }
 
 function isUnlimited(approval: Approval): boolean {
-  return approval.kind === 'nft' || approval.unlimited;
+  return approval.kind === 'nft' ||
+    (approval.kind !== 'nft-token' && approval.unlimited);
 }
 
 function riskPriority(
@@ -63,7 +64,7 @@ function exposureUsd(
   approval: Approval,
   prices: Record<string, number> | undefined,
 ): number | undefined {
-  if (approval.kind === 'nft' || !approval.atRiskAmountText) return undefined;
+  if (approval.kind === 'nft' || approval.kind === 'nft-token' || !approval.atRiskAmountText) return undefined;
   const price = prices?.[approval.token.toLowerCase()];
   if (price === undefined) return undefined;
   const value = Number(approval.atRiskAmountText) * price;

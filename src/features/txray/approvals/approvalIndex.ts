@@ -6,15 +6,33 @@ export interface ApprovalPair {
   spender: Address;
 }
 
+export interface NftTokenIndex {
+  token: Address;
+  tokenId: string;
+}
+
 export interface ApprovalIndexPayload {
   erc20: ApprovalPair[];
   nft: ApprovalPair[];
+  nftToken: NftTokenIndex[];
   permit2: ApprovalPair[];
   coverage: {
     status: 'complete' | 'partial';
     truncatedSources: string[];
     maxRecordsPerSource: number;
   };
+}
+
+function parseNftTokens(value: unknown): NftTokenIndex[] {
+  if (!Array.isArray(value)) throw new Error('授权索引响应缺少 nftToken');
+  return value.map((item) => {
+    if (!isRecord(item) || typeof item.token !== 'string' || !isAddress(item.token) ||
+      typeof item.tokenId !== 'string' || item.tokenId.length > 78 || !/^\d+$/.test(item.tokenId) ||
+      BigInt(item.tokenId) >= 2n ** 256n) {
+      throw new Error('授权索引返回了无效的 nftToken');
+    }
+    return { token: getAddress(item.token), tokenId: item.tokenId };
+  });
 }
 
 function parsePairs(value: unknown, field: string): ApprovalPair[] {
@@ -63,6 +81,7 @@ export function parseApprovalIndexPayload(value: unknown): ApprovalIndexPayload 
   return {
     erc20: parsePairs(value.erc20, 'erc20'),
     nft: parsePairs(value.nft, 'nft'),
+    nftToken: parseNftTokens(value.nftToken),
     permit2: parsePairs(value.permit2, 'permit2'),
     coverage: {
       status: coverageStatus,

@@ -38,7 +38,7 @@ TxRay focuses on **detect + explain**:
 - Read ERC-20, ERC-721, and Permit2 approval history through a server-side Etherscan indexer route; explicitly mark results incomplete when the pagination budget is reached.
 - Verify current allowances with chunked viem multicalls, filtering stale approvals without creating oversized RPC requests.
 - Detect unlimited ERC-20 allowances.
-- Detect NFT `setApprovalForAll` collection-level approvals.
+- Detect NFT `setApprovalForAll` collection-wide and ERC-721 token-specific approvals; verify the latter against current `ownerOf` / `getApproved` state rather than treating historical events as current.
 - Inspect Uniswap Permit2 internal allowances.
 - Support Ethereum, Base, Arbitrum, and Optimism.
 - Estimate `$ at risk` with `min(current balance, allowance)`, using server-side batched and cached CoinGecko pricing plus explicit complete, partial, or unavailable coverage states.

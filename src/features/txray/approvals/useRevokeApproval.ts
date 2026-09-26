@@ -69,7 +69,7 @@ export function useRevokeApproval({
           args: call.args,
         });
         await writeContractAsync({ ...request, chainId });
-      } else if (call.kind === 'nft') {
+      } else if (call.kind === 'nft' || call.kind === 'nft-token') {
         const { request } = await publicClient.simulateContract({
           account,
           address: call.address,

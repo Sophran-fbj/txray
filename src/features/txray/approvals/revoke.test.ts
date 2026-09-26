@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAddress } from 'viem';
+import { getAddress, zeroAddress } from 'viem';
 import { PERMIT2_ADDRESS } from './permit2';
 import { createRevokeCall } from './revoke';
 import type { Approval } from './useApprovals';
@@ -27,6 +27,16 @@ describe('createRevokeCall', () => {
     expect(call).toMatchObject({
       kind: 'nft', address: token, functionName: 'setApprovalForAll',
       args: [spender, false],
+    });
+  });
+
+  it('revokes a single ERC-721 token without revoking collection operators', () => {
+    const approval: Approval = {
+      kind: 'nft-token', id: 'nft-token', token, spender, symbol: 'NFT', tokenId: '7',
+    };
+    expect(createRevokeCall(approval)).toMatchObject({
+      kind: 'nft-token', address: token, functionName: 'approve',
+      args: [zeroAddress, 7n],
     });
   });
 

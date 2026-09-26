@@ -115,7 +115,7 @@ function ApprovalsContent() {
     () =>
       approvals
         ? approvals
-            .filter((a) => a.kind !== 'nft')
+            .filter((a) => a.kind !== 'nft' && a.kind !== 'nft-token')
             .map((a) => a.token)
         : [],
     [approvals],
@@ -435,7 +435,7 @@ function ApprovalsContent() {
                           walletChainId={walletChainId}
                           riskUnavailable={isRiskError}
                           usdPrice={
-                            a.kind === 'nft'
+                            a.kind === 'nft' || a.kind === 'nft-token'
                               ? undefined
                               : tokenPriceResult?.prices[a.token.toLowerCase()]
                           }

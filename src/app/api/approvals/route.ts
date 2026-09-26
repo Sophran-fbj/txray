@@ -13,6 +13,7 @@ import {
 } from '@/lib/server/requestGuard';
 import { isRecord } from '@/lib/validation';
 import { parseApprovalIndexPayload } from '@/features/txray/approvals/approvalIndex';
+import { splitApprovalLogs } from '@/features/txray/approvals/approvalEvents';
 import { getSharedJson, setSharedJson } from '@/lib/server/sharedState';
 
 const APPROVAL_TOPIC0 =
@@ -28,7 +29,7 @@ const MAX_PAGES_PER_SOURCE = 10;
 const UPSTREAM_TIMEOUT_MS = 12_000;
 const CACHE_TTL_MS = 60_000;
 const MAX_CACHE_ENTRIES = 2_000;
-const SHARED_CACHE_NAMESPACE = 'approval-scan';
+const SHARED_CACHE_NAMESPACE = 'approval-scan-v2';
 const SHARED_CACHE_TTL_SECONDS = 60;
 
 interface EtherscanLog {
@@ -49,6 +50,7 @@ interface LogPageResult {
 interface ApprovalIndexResponse {
   erc20: Pair[];
   nft: Pair[];
+  nftToken: { token: string; tokenId: string }[];
   permit2: Pair[];
   coverage: {
     status: 'complete' | 'partial';
@@ -218,10 +220,12 @@ async function scanApprovals(
   const truncatedSources = sources
     .filter(([name]) => results[name].truncated)
     .map(([name]) => name);
+  const approvalEvents = splitApprovalLogs(results.erc20.logs);
 
   return {
-    erc20: dedupeSpenderPairs(results.erc20.logs),
+    erc20: approvalEvents.erc20,
     nft: dedupeSpenderPairs(results.nft.logs),
+    nftToken: approvalEvents.nftToken,
     permit2: dedupePermit2Pairs([
       ...results.permit2Approval.logs,
       ...results.permit2Permit.logs,

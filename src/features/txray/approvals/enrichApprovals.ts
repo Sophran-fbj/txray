@@ -17,6 +17,7 @@ import type {
   Erc20Approval,
   FungibleApprovalDisplay,
   NftApproval,
+  NftTokenApproval,
   Permit2Approval,
 } from './types';
 
@@ -35,6 +36,7 @@ export async function enrichApprovals(
   current: CurrentApprovalState,
 ): Promise<EnrichedApprovals> {
   const fungible = [...current.erc20, ...current.permit2];
+  const allNft = [...current.nft, ...current.nftToken];
   const [metadata, balances, nftMetadata] = await Promise.all([
     runInChunks<(typeof fungible)[number], unknown>(
       fungible,
@@ -70,8 +72,8 @@ export async function enrichApprovals(
           })),
         }),
     ),
-    runInChunks<(typeof current.nft)[number], unknown>(
-      current.nft,
+    runInChunks<(typeof allNft)[number], unknown>(
+      allNft,
       MULTICALL_CHUNK_SIZE,
       (chunk) =>
         client.multicall({
@@ -149,9 +151,20 @@ export async function enrichApprovals(
         symbolResult !== undefined ? String(symbolResult) : shortAddress(pair.token),
     };
   });
+  const nftToken: NftTokenApproval[] = current.nftToken.map((pair, index) => {
+    const symbolResult = readSuccessResult(nftMetadata[current.nft.length + index]);
+    return {
+      kind: 'nft-token',
+      id: `nft-token-${pairKey(pair.token, pair.spender)}-${pair.tokenId}`,
+      token: pair.token,
+      spender: pair.spender,
+      tokenId: pair.tokenId,
+      symbol: symbolResult !== undefined ? String(symbolResult) : shortAddress(pair.token),
+    };
+  });
 
   return {
-    approvals: [...erc20, ...permit2, ...nft].sort(
+    approvals: [...erc20, ...permit2, ...nft, ...nftToken].sort(
       (left, right) => Number(isRisky(right)) - Number(isRisky(left)),
     ),
     failedDecimals,

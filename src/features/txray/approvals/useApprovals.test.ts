@@ -11,6 +11,7 @@ describe('parseApprovalIndexPayload', () => {
     const result = parseApprovalIndexPayload({
       erc20: [VALID_PAIR],
       nft: [],
+      nftToken: [],
       permit2: [],
       coverage: {
         status: 'partial',
@@ -28,6 +29,7 @@ describe('parseApprovalIndexPayload', () => {
       parseApprovalIndexPayload({
         erc20: [{ token: 'not-an-address', spender: VALID_PAIR.spender }],
         nft: [],
+        nftToken: [],
         permit2: [],
         coverage: {
           status: 'complete',
@@ -36,6 +38,15 @@ describe('parseApprovalIndexPayload', () => {
         },
       }),
     ).toThrow(/无效/);
+  });
+
+  it('parses a token-scoped NFT candidate with a bounded token ID', () => {
+    const result = parseApprovalIndexPayload({
+      erc20: [], nft: [], permit2: [],
+      nftToken: [{ token: VALID_PAIR.token, tokenId: '7' }],
+      coverage: { status: 'complete', truncatedSources: [], maxRecordsPerSource: 10_000 },
+    });
+    expect(result.nftToken).toEqual([{ token: VALID_PAIR.token, tokenId: '7' }]);
   });
 
   it('surfaces stable API error messages', () => {

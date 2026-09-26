@@ -51,4 +51,13 @@ describe('approval view options', () => {
     selectApprovals(approvals, risks, undefined, 'all', 'risk');
     expect(approvals.map((a) => a.id)).toEqual(['known', 'unknown', 'malicious']);
   });
+
+  it('does not mislabel a single NFT approval as unlimited', () => {
+    const single: Approval = {
+      kind: 'nft-token', id: 'single', token, spender: known,
+      symbol: 'NFT', tokenId: '7',
+    };
+    expect(selectApprovals([single], risks, undefined, 'unlimited', 'risk')).toEqual([]);
+    expect(selectApprovals([single], risks, undefined, 'all', 'risk')).toEqual([single]);
+  });
 });
