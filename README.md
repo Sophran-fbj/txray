@@ -4,8 +4,8 @@
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Open_TxRay-7c3aed?style=for-the-badge)](https://sophran-tools.vercel.app/tools/txray)
 [![Try without wallet](https://img.shields.io/badge/Try_without_wallet-Demo_Mode-0891b2?style=for-the-badge)](https://sophran-tools.vercel.app/tools/txray/approvals?demo=1)
-[![CI](https://github.com/Sophran-fbj/sophran-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/Sophran-fbj/sophran-tools/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/Sophran-fbj/sophran-tools)](./LICENSE)
+[![CI](https://github.com/Sophran-fbj/txray/actions/workflows/ci.yml/badge.svg)](https://github.com/Sophran-fbj/txray/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/Sophran-fbj/txray)](./LICENSE)
 
 > 检查 ERC-20、NFT 和 Permit2 授权，解码交易与 EIP-712 签名，并用人话解释风险。
 
@@ -17,7 +17,7 @@
 <p align="center"><strong>20 秒操作演示：无需连接钱包即可体验授权检查与交易解码</strong></p>
 <p align="center"><img src="./docs/assets/txray-demo.gif" alt="TxRay 无钱包操作演示" width="960" /></p>
 
-TxRay 是 Sophran Tools 中面向链上安全的核心产品。当前包含 **授权检查**、**交易解码** 和 **Signature Risk**：分别用于分析代币授权、calldata / transaction input，以及 EIP-712 签名风险。
+TxRay 提供 **授权检查**、**交易解码** 和 **Signature Risk**，分别用于分析代币授权、交易输入数据和 EIP-712 签名风险。
 
 这些工具关注真实的用户安全场景：钱包连接、索引化链上数据、RPC 读取、multicall、calldata 解码、Permit2 授权分析、EIP-712 typed data 检查，以及面向用户的人话解释。
 

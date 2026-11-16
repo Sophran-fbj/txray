@@ -1,4 +1,5 @@
-export const THEME_STORAGE_KEY = 'sophran-tools-theme';
+export const THEME_STORAGE_KEY = 'txray-theme';
+export const LEGACY_THEME_STORAGE_KEY = 'sophran-tools-theme';
 
 export const themes = ['frost', 'graphite', 'sandstone'] as const;
 export type ThemeName = (typeof themes)[number];

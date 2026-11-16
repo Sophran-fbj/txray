@@ -1,7 +1,7 @@
 ﻿import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import { DEFAULT_THEME, THEME_STORAGE_KEY, themes } from "@/lib/theme";
+import { DEFAULT_THEME, LEGACY_THEME_STORAGE_KEY, THEME_STORAGE_KEY, themes } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "TxRay — Web3 Approval & Transaction Risk Explorer",
@@ -19,7 +19,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var theme=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});if(${JSON.stringify(themes)}.includes(theme))document.documentElement.dataset.theme=theme}catch{}`,
+            __html: `try{var theme=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})??localStorage.getItem(${JSON.stringify(LEGACY_THEME_STORAGE_KEY)});if(${JSON.stringify(themes)}.includes(theme))document.documentElement.dataset.theme=theme}catch{}`,
           }}
         />
       </head>

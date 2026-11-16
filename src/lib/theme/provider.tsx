@@ -9,7 +9,7 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const themeChangedEvent = 'sophran-theme-changed';
+const themeChangedEvent = 'txray-theme-changed';
 
 function subscribe(callback: () => void) {
   window.addEventListener(themeChangedEvent, callback);

@@ -22,7 +22,7 @@ const walletConnectProjectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID?.trim();
 // Injected wallets remain available locally; production should provide a project id.
 export const config = walletConnectProjectId
   ? getDefaultConfig({
-      appName: 'Sophran Tools',
+      appName: 'TxRay',
       projectId: walletConnectProjectId,
       chains,
       transports,
