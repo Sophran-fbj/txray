@@ -453,6 +453,7 @@ export const messages = {
       invalidTypedData: '无法可靠读取这段数据；请确认它是包含 message 的 EIP-712 typed-data JSON，且结构完整。',
       permitSample: 'ERC-20 permit 示例',
       permit2Sample: 'Permit2 示例',
+      seaportSample: 'Seaport 零元订单示例',
       placeholder:
         '{"domain":{...},"primaryType":"Permit","message":{...},"types":{...}}',
       idle:
@@ -485,6 +486,28 @@ export const messages = {
       value: '值',
       why: '为什么重要',
       rawMessage: '原始 message',
+      orderBreakdown: {
+        title: '订单资产流向对照',
+        give: '你交出（Offer）',
+        receive: '你收到（Consideration）',
+        zeroReturnWarning:
+          '极高风险：该订单从你的地址转出资产，但没有任何资产回到你自己的地址（零回报）。常见于伪造挂单或钓鱼签名。',
+        noOffererReturn: '没有条款将资产支付给签名发起人（offerer）。',
+        toThirdParty: '以下接收项流向第三方地址：',
+        recipient: '接收地址',
+        tokenId: 'Token ID',
+        amount: '数量',
+        empty: '无条款',
+        itemTypes: {
+          native: '原生币 (ETH)',
+          erc20: 'ERC-20',
+          erc721: 'ERC-721',
+          erc1155: 'ERC-1155',
+          'erc721-criteria': 'ERC-721 条件',
+          'erc1155-criteria': 'ERC-1155 条件',
+          unknown: '未知资产',
+        },
+      },
       riskTitles: {
         unknown: '未知 typed-data 签名',
         permit2: 'Permit2 代币花费授权',
@@ -986,6 +1009,7 @@ export const messages = {
       invalidTypedData: 'Could not reliably read this payload. Check that it is a complete EIP-712 typed-data JSON object containing message.',
       permitSample: 'ERC-20 permit sample',
       permit2Sample: 'Permit2 sample',
+      seaportSample: 'Seaport zero-return sample',
       placeholder:
         '{"domain":{...},"primaryType":"Permit","message":{...},"types":{...}}',
       idle:
@@ -1019,6 +1043,28 @@ export const messages = {
       value: 'Value',
       why: 'Why it matters',
       rawMessage: 'Raw message',
+      orderBreakdown: {
+        title: 'Order give vs receive',
+        give: 'You give (Offer)',
+        receive: 'You receive (Consideration)',
+        zeroReturnWarning:
+          'Critical risk: this order transfers assets from your address while returning nothing to you (zero return). This pattern is commonly used in phishing orders.',
+        noOffererReturn: 'No consideration item pays back to the offerer address.',
+        toThirdParty: 'Consideration items sent to other recipients:',
+        recipient: 'Recipient',
+        tokenId: 'Token ID',
+        amount: 'Amount',
+        empty: 'None',
+        itemTypes: {
+          native: 'Native (ETH)',
+          erc20: 'ERC-20',
+          erc721: 'ERC-721',
+          erc1155: 'ERC-1155',
+          'erc721-criteria': 'ERC-721 criteria',
+          'erc1155-criteria': 'ERC-1155 criteria',
+          unknown: 'Unknown',
+        },
+      },
       riskTitles: {
         unknown: 'Unknown typed-data signature',
         permit2: 'Permit2 token spending approval',

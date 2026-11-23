@@ -41,3 +41,16 @@ test('an expired field does not turn a permit into a low-risk verdict', async ({
   await expect(page.getByText(/截止时间在极远未来/)).toBeVisible();
   await expect(page.getByText(/Invalid Date/)).toHaveCount(0);
 });
+
+test('signature risk shows Seaport give vs receive breakdown for zero-return orders', async ({
+  page,
+}) => {
+  await page.goto('/tools/signature-risk');
+  await page.getByRole('button', { name: 'Seaport 零元订单示例' }).click();
+
+  await expect(page.getByRole('heading', { name: '订单资产流向对照' })).toBeVisible();
+  await expect(page.getByText('你交出（Offer）')).toBeVisible();
+  await expect(page.getByText('你收到（Consideration）')).toBeVisible();
+  await expect(page.getByText(/没有任何资产回到你自己的地址（零回报）/)).toBeVisible();
+  await expect(page.getByText('#4242').first()).toBeVisible();
+});

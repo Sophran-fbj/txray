@@ -8,6 +8,8 @@ import { useI18n } from '@/lib/i18n/provider';
 import {
   analyzeTypedData,
   type FieldFinding,
+  type OrderAssetItem,
+  type OrderSummary,
   type SignatureAnalysis,
   type SignatureDanger,
   type SignatureRiskKind,
@@ -80,6 +82,86 @@ const EXAMPLE_PERMIT2 = JSON.stringify(
       },
       spender: '0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B',
       sigDeadline: '4102444800',
+    },
+  },
+  null,
+  2,
+);
+
+const EXAMPLE_SEAPORT_ZERO_RETURN = JSON.stringify(
+  {
+    domain: {
+      name: 'Seaport',
+      version: '1.5',
+      chainId: 1,
+      verifyingContract: '0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC',
+    },
+    primaryType: 'OrderComponents',
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ],
+      OrderComponents: [
+        { name: 'offerer', type: 'address' },
+        { name: 'zone', type: 'address' },
+        { name: 'offer', type: 'OfferItem[]' },
+        { name: 'consideration', type: 'ConsiderationItem[]' },
+        { name: 'orderType', type: 'uint8' },
+        { name: 'startTime', type: 'uint256' },
+        { name: 'endTime', type: 'uint256' },
+        { name: 'zoneHash', type: 'bytes32' },
+        { name: 'salt', type: 'uint256' },
+        { name: 'conduitKey', type: 'bytes32' },
+        { name: 'counter', type: 'uint256' },
+      ],
+      OfferItem: [
+        { name: 'itemType', type: 'uint8' },
+        { name: 'token', type: 'address' },
+        { name: 'identifierOrCriteria', type: 'uint256' },
+        { name: 'startAmount', type: 'uint256' },
+        { name: 'endAmount', type: 'uint256' },
+      ],
+      ConsiderationItem: [
+        { name: 'itemType', type: 'uint8' },
+        { name: 'token', type: 'address' },
+        { name: 'identifierOrCriteria', type: 'uint256' },
+        { name: 'startAmount', type: 'uint256' },
+        { name: 'endAmount', type: 'uint256' },
+        { name: 'recipient', type: 'address' },
+      ],
+    },
+    message: {
+      offerer: '0xFb3C2B2769A2119f349233A44A640F090C907667',
+      zone: '0x0000000000000000000000000000000000000000',
+      offer: [
+        {
+          itemType: 2,
+          token: '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D',
+          identifierOrCriteria: '4242',
+          startAmount: '1',
+          endAmount: '1',
+        },
+      ],
+      consideration: [
+        {
+          itemType: 2,
+          token: '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D',
+          identifierOrCriteria: '4242',
+          startAmount: '1',
+          endAmount: '1',
+          recipient: '0x2222222222222222222222222222222222222222',
+        },
+      ],
+      orderType: 0,
+      startTime: '1700000000',
+      endTime: '4102444800',
+      zoneHash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      salt: '1',
+      conduitKey: '0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000',
+      counter: '0',
     },
   },
   null,
@@ -165,6 +247,13 @@ export default function SignaturePage() {
                   onClick={() => loadSample(EXAMPLE_PERMIT2)}
                 >
                   {copy.permit2Sample}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs border border-base-300 text-error"
+                  onClick={() => loadSample(EXAMPLE_SEAPORT_ZERO_RETURN)}
+                >
+                  {copy.seaportSample}
                 </button>
               </div>
             </div>
@@ -286,6 +375,8 @@ function AnalysisView({ data }: { data: SignatureAnalysis }) {
           mono
         />
       </div>
+
+      {data.orderSummary && <OrderBalanceCard summary={data.orderSummary} />}
 
       <div className="card border border-base-300 bg-base-200">
         <div className="card-body p-4 sm:p-5">
@@ -434,4 +525,134 @@ function riskExplain(t: ReturnType<typeof useI18n>['t'], kind: SignatureRiskKind
   if (kind === 'erc20-permit') return copy.riskExplains.erc20Permit;
   if (kind === 'nft-order') return copy.riskExplains.nftOrder;
   return copy.riskExplains[kind];
+}
+
+function OrderBalanceCard({ summary }: { summary: OrderSummary }) {
+  const { t } = useI18n();
+  const breakdown = t.signatureRisk.orderBreakdown;
+
+  return (
+    <div className="card border border-base-300 bg-base-200">
+      <div className="card-body gap-4 p-4 sm:p-5">
+        <h2 className="card-title text-lg">{breakdown.title}</h2>
+
+        {summary.zeroReturnToOfferer && (
+          <div role="alert" className="alert alert-error text-sm">
+            <span>{breakdown.zeroReturnWarning}</span>
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="min-w-0 rounded-box border border-error/25 bg-base-100/60 p-3.5">
+            <div className="mb-2.5 text-sm font-semibold text-error">{breakdown.give}</div>
+            <OrderItemList items={summary.give} tone="give" />
+          </div>
+
+          <div className="min-w-0 rounded-box border border-base-300 bg-base-100/60 p-3.5">
+            <div className="mb-2.5 text-sm font-semibold text-success">{breakdown.receive}</div>
+            {summary.receiveByOfferer.length > 0 ? (
+              <OrderItemList items={summary.receiveByOfferer} tone="receive" />
+            ) : (
+              <p className="text-xs text-base-content/70">{breakdown.noOffererReturn}</p>
+            )}
+
+            {summary.receiveByOthers.length > 0 && (
+              <div className="mt-3 border-t border-base-300 pt-3">
+                <div className="mb-2 text-xs font-medium text-warning">
+                  {breakdown.toThirdParty}
+                </div>
+                <OrderItemList items={summary.receiveByOthers} tone="other" />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderItemList({
+  items,
+  tone,
+}: {
+  items: OrderAssetItem[];
+  tone: 'give' | 'receive' | 'other';
+}) {
+  const { t } = useI18n();
+  const breakdown = t.signatureRisk.orderBreakdown;
+
+  if (items.length === 0) {
+    return <p className="text-xs text-base-content/60">{breakdown.empty}</p>;
+  }
+
+  const badgeTone =
+    tone === 'give'
+      ? 'badge-error badge-outline'
+      : tone === 'receive'
+        ? 'badge-success badge-outline'
+        : 'badge-warning badge-outline';
+
+  return (
+    <ul className="space-y-2.5">
+      {items.map((item, idx) => {
+        const amount = formatOrderAmount(item);
+        const showZeroToken =
+          item.token && item.token !== '0x0000000000000000000000000000000000000000';
+        const showTokenId =
+          item.identifierOrCriteria !== undefined &&
+          (item.identifierOrCriteria !== '0' ||
+            item.itemType === 'erc721' ||
+            item.itemType === 'erc1155');
+
+        return (
+          <li
+            key={`${tone}-${idx}-${item.token ?? 'none'}`}
+            className="min-w-0 rounded-box border border-base-300/80 bg-base-200/70 p-2.5 text-xs"
+          >
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+              <span className={`badge badge-xs ${badgeTone}`}>
+                {breakdown.itemTypes[item.itemType]}
+              </span>
+              {amount && (
+                <span className="font-mono text-base-content/85">
+                  {breakdown.amount}: {amount}
+                </span>
+              )}
+              {showTokenId && (
+                <span className="font-mono text-base-content/75">
+                  #{item.identifierOrCriteria}
+                </span>
+              )}
+            </div>
+
+            {showZeroToken && item.token && (
+              <div className="flex min-w-0 items-center justify-between gap-1.5">
+                <span className="min-w-0 break-all font-mono text-[11px] text-base-content/75">
+                  {item.token}
+                </span>
+                <CopyButton value={item.token} label={breakdown.itemTypes[item.itemType]} />
+              </div>
+            )}
+
+            {item.recipient && (
+              <div className="mt-1 flex min-w-0 items-center justify-between gap-1.5 text-[11px] text-base-content/75">
+                <span className="min-w-0 break-all font-mono">
+                  {breakdown.recipient}: {item.recipient}
+                </span>
+                <CopyButton value={item.recipient} label={breakdown.recipient} />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function formatOrderAmount(item: OrderAssetItem): string | undefined {
+  if (!item.startAmount && !item.endAmount) return undefined;
+  if (item.startAmount && item.endAmount && item.startAmount !== item.endAmount) {
+    return `${item.startAmount} → ${item.endAmount}`;
+  }
+  return item.startAmount ?? item.endAmount;
 }

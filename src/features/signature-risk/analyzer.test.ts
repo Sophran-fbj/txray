@@ -250,6 +250,148 @@ describe('analyzeTypedData', () => {
     expect(result.danger).toBe('high');
   });
 
+  it('builds a give-vs-receive order summary flagging zero-return Seaport orders', () => {
+    const offerer = '0x1111111111111111111111111111111111111111';
+    const attacker = '0x2222222222222222222222222222222222222222';
+    const nft = '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D';
+    const result = analyzeTypedData(JSON.stringify({
+      types: {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' },
+        ],
+        OrderComponents: [
+          { name: 'offerer', type: 'address' },
+          { name: 'zone', type: 'address' },
+          { name: 'offer', type: 'OfferItem[]' },
+          { name: 'consideration', type: 'ConsiderationItem[]' },
+          { name: 'orderType', type: 'uint8' },
+          { name: 'startTime', type: 'uint256' },
+          { name: 'endTime', type: 'uint256' },
+          { name: 'zoneHash', type: 'bytes32' },
+          { name: 'salt', type: 'uint256' },
+          { name: 'conduitKey', type: 'bytes32' },
+          { name: 'counter', type: 'uint256' },
+        ],
+        OfferItem: [
+          { name: 'itemType', type: 'uint8' },
+          { name: 'token', type: 'address' },
+          { name: 'identifierOrCriteria', type: 'uint256' },
+          { name: 'startAmount', type: 'uint256' },
+          { name: 'endAmount', type: 'uint256' },
+        ],
+        ConsiderationItem: [
+          { name: 'itemType', type: 'uint8' },
+          { name: 'token', type: 'address' },
+          { name: 'identifierOrCriteria', type: 'uint256' },
+          { name: 'startAmount', type: 'uint256' },
+          { name: 'endAmount', type: 'uint256' },
+          { name: 'recipient', type: 'address' },
+        ],
+      },
+      domain: {
+        name: 'Seaport',
+        version: '1.5',
+        chainId: 1,
+        verifyingContract: '0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC',
+      },
+      primaryType: 'OrderComponents',
+      message: {
+        offerer,
+        zone: '0x0000000000000000000000000000000000000000',
+        offer: [
+          {
+            itemType: 2,
+            token: nft,
+            identifierOrCriteria: '4242',
+            startAmount: '1',
+            endAmount: '1',
+          },
+        ],
+        consideration: [
+          {
+            itemType: 2,
+            token: nft,
+            identifierOrCriteria: '4242',
+            startAmount: '1',
+            endAmount: '1',
+            recipient: attacker,
+          },
+        ],
+        orderType: 0,
+        startTime: '1700000000',
+        endTime: '4102444800',
+        zoneHash: `0x${'00'.repeat(32)}`,
+        salt: '1',
+        conduitKey: `0x${'00'.repeat(32)}`,
+        counter: '0',
+      },
+    }));
+
+    expect(result.schemaValidated).toBe(true);
+    expect(result.riskKind).toBe('nft-order');
+    expect(result.danger).toBe('high');
+    expect(result.orderSummary?.zeroReturnToOfferer).toBe(true);
+    expect(result.orderSummary?.give).toHaveLength(1);
+    expect(result.orderSummary?.give[0]?.itemType).toBe('erc721');
+    expect(result.orderSummary?.receiveByOfferer).toHaveLength(0);
+    expect(result.orderSummary?.receiveByOthers).toHaveLength(1);
+    expect(result.orderSummary?.receiveByOthers[0]?.recipient).toBe(attacker);
+  });
+
+  it('recognizes offerer payment in Seaport consideration as non-zero return', () => {
+    const offerer = '0x1111111111111111111111111111111111111111';
+    const result = analyzeTypedData(JSON.stringify({
+      domain: { name: 'Seaport', chainId: 1 },
+      primaryType: 'OrderComponents',
+      message: {
+        offerer,
+        offer: [
+          {
+            itemType: 2,
+            token: '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D',
+            identifierOrCriteria: '7',
+            startAmount: '1',
+            endAmount: '1',
+          },
+        ],
+        consideration: [
+          {
+            itemType: 0,
+            token: '0x0000000000000000000000000000000000000000',
+            identifierOrCriteria: '0',
+            startAmount: '1500000000000000000',
+            endAmount: '1500000000000000000',
+            recipient: offerer,
+          },
+        ],
+        endTime: '4102444800',
+      },
+    }));
+
+    expect(result.orderSummary?.zeroReturnToOfferer).toBe(false);
+    expect(result.orderSummary?.receiveByOfferer).toHaveLength(1);
+    expect(result.orderSummary?.receiveByOfferer[0]?.itemType).toBe('native');
+    expect(result.orderSummary?.receiveByOthers).toHaveLength(0);
+  });
+
+  it('does not flag zeroReturnToOfferer when order message omits offerer', () => {
+    const result = analyzeTypedData(JSON.stringify({
+      domain: { name: 'Seaport' },
+      primaryType: 'Order',
+      message: {
+        offer: [{ token: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', startAmount: '100' }],
+        consideration: [{ recipient: '0xE592427A0AEce92De3Edee1F18E0157C05861564', startAmount: '100' }],
+      },
+    }));
+
+    expect(result.orderSummary?.zeroReturnToOfferer).toBe(false);
+    expect(result.orderSummary?.give).toHaveLength(1);
+    expect(result.orderSummary?.receiveByOthers).toHaveLength(1);
+  });
+
   it('does not pretend unknown typed data is classified', () => {
     const result = analyzeTypedData(
       JSON.stringify({

@@ -30,6 +30,34 @@ export interface FieldFinding {
   deadline?: { dateMs?: number; daysRemaining?: number };
 }
 
+export type OrderItemType =
+  | 'native'
+  | 'erc20'
+  | 'erc721'
+  | 'erc1155'
+  | 'erc721-criteria'
+  | 'erc1155-criteria'
+  | 'unknown';
+
+export interface OrderAssetItem {
+  itemType: OrderItemType;
+  token?: Address;
+  identifierOrCriteria?: string;
+  startAmount?: string;
+  endAmount?: string;
+  recipient?: Address;
+}
+
+export interface OrderSummary {
+  offerer?: Address;
+  zone?: Address;
+  conduitKey?: string;
+  give: OrderAssetItem[];
+  receiveByOfferer: OrderAssetItem[];
+  receiveByOthers: OrderAssetItem[];
+  zeroReturnToOfferer: boolean;
+}
+
 export interface SignatureAnalysis {
   domainName?: string;
   chainId?: string;
@@ -38,6 +66,7 @@ export interface SignatureAnalysis {
   danger: SignatureDanger;
   riskKind: SignatureRiskKind;
   permit2Mode?: 'allowance' | 'transfer';
+  orderSummary?: OrderSummary;
   title: string;
   explain: string;
   findings: FieldFinding[];
@@ -96,7 +125,7 @@ export function analyzeTypedData(input: string): SignatureAnalysis {
     (finding) =>
       finding.kind === 'deadline' &&
       finding.expired &&
-      /(?:^|\.)(?:deadline|sigDeadline)$/i.test(finding.path ?? ''),
+      /(?:^|\.)(?:deadline|sigDeadline|endTime)$/i.test(finding.path ?? ''),
   );
 
   let danger: SignatureDanger = 'unknown';
@@ -138,6 +167,7 @@ export function analyzeTypedData(input: string): SignatureAnalysis {
     permit2Mode: permitKind === 'permit2-allowance'
       ? 'allowance'
       : permitKind === 'permit2-transfer' ? 'transfer' : undefined,
+    orderSummary: permitKind === 'nft-order' ? buildOrderSummary(message) : undefined,
     title,
     explain,
     findings,
@@ -395,10 +425,87 @@ function findingFromLeaf(leaf: TypedLeaf): FieldFinding[] {
       },
     ];
   }
-  if (['deadline', 'expiration', 'sigdeadline'].includes(key)) {
+  if (['deadline', 'expiration', 'sigdeadline', 'endtime'].includes(key)) {
     return [deadlineFinding(leaf.value, leaf.path)];
   }
   return [];
+}
+
+function buildOrderSummary(message: Record<string, unknown>): OrderSummary {
+  const offerer = asAddress(message.offerer);
+  const zone = asAddress(message.zone);
+  const conduitKey = typeof message.conduitKey === 'string' ? message.conduitKey : undefined;
+  const give = Array.isArray(message.offer) ? message.offer.flatMap(parseOrderItem) : [];
+  const consideration = Array.isArray(message.consideration)
+    ? message.consideration.flatMap(parseOrderItem)
+    : [];
+
+  const receiveByOfferer: OrderAssetItem[] = [];
+  const receiveByOthers: OrderAssetItem[] = [];
+  for (const item of consideration) {
+    if (offerer && item.recipient && item.recipient.toLowerCase() === offerer.toLowerCase()) {
+      receiveByOfferer.push(item);
+    } else {
+      receiveByOthers.push(item);
+    }
+  }
+
+  const hasPositiveReturn = receiveByOfferer.some(
+    (item) => isPositiveIntegerText(item.startAmount) || isPositiveIntegerText(item.endAmount),
+  );
+
+  return {
+    offerer,
+    zone,
+    conduitKey,
+    give,
+    receiveByOfferer,
+    receiveByOthers,
+    zeroReturnToOfferer: Boolean(offerer) && give.length > 0 && !hasPositiveReturn,
+  };
+}
+
+function parseOrderItem(value: unknown): OrderAssetItem[] {
+  if (!isRecord(value)) return [];
+  return [
+    {
+      itemType: mapOrderItemType(value.itemType),
+      token: asAddress(value.token),
+      identifierOrCriteria: optionalScalarText(value.identifierOrCriteria),
+      startAmount: optionalScalarText(value.startAmount),
+      endAmount: optionalScalarText(value.endAmount),
+      recipient: asAddress(value.recipient),
+    },
+  ];
+}
+
+function mapOrderItemType(value: unknown): OrderItemType {
+  const numeric = typeof value === 'number' && Number.isSafeInteger(value)
+    ? BigInt(value)
+    : typeof value === 'string'
+      ? parseUnsignedInteger(value)
+      : undefined;
+  switch (numeric) {
+    case 0n: return 'native';
+    case 1n: return 'erc20';
+    case 2n: return 'erc721';
+    case 3n: return 'erc1155';
+    case 4n: return 'erc721-criteria';
+    case 5n: return 'erc1155-criteria';
+    default: return 'unknown';
+  }
+}
+
+function optionalScalarText(value: unknown): string | undefined {
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  return undefined;
+}
+
+function isPositiveIntegerText(value: string | undefined): boolean {
+  if (!value) return false;
+  const parsed = parseUnsignedInteger(value);
+  return parsed !== undefined && parsed > 0n;
 }
 
 function classifyPermit(
