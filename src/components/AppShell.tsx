@@ -33,6 +33,7 @@ export function AppShell({
     { href: '/tools/txray/approvals', label: t.common.nav.approvals },
     { href: '/tools/txray/decoder', label: t.common.nav.decoder },
     { href: '/tools/signature-risk', label: t.common.nav.signatureRisk },
+    { href: '/cases', label: t.common.nav.cases },
     { href: '/articles', label: t.common.nav.articles },
   ];
 

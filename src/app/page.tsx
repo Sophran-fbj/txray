@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { articles, pickText } from '@/content/articles';
+import { getRiskCase, riskCaseHref } from '@/content/riskCases';
 import { useI18n } from '@/lib/i18n/provider';
+
+const FEATURED_CASE_IDS = [
+  'safe-multisend-delegatecall',
+  'universal-router-permit2-sweep',
+  'seaport-zero-return-nft',
+] as const;
 
 export default function Home() {
   const { locale, t } = useI18n();
@@ -146,6 +153,58 @@ export default function Home() {
               </div>
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="mt-8" aria-labelledby="home-cases-heading">
+        <div className="flex items-center justify-between gap-2">
+          <h2
+            id="home-cases-heading"
+            className="text-xs font-semibold uppercase tracking-wider text-base-content/60"
+          >
+            {t.home.casesHeading}
+          </h2>
+          <Link href="/cases" className="link link-hover text-xs text-primary">
+            {t.home.viewAllCases} →
+          </Link>
+        </div>
+
+        <div className="mt-3 grid gap-4 md:grid-cols-3">
+          {FEATURED_CASE_IDS.map((id) => getRiskCase(id))
+            .filter((item): item is NonNullable<typeof item> => Boolean(item))
+            .map((item) => (
+              <Link
+                key={item.id}
+                href={riskCaseHref(item)}
+                className="group card border border-base-300 bg-base-200 transition hover:border-primary/40 hover:bg-base-300/35"
+              >
+                <div className="card-body justify-between gap-3 p-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="badge badge-error badge-xs">{t.cases.highRisk}</span>
+                      <span className="badge badge-outline badge-xs">
+                        {t.cases.categories[item.category]}
+                      </span>
+                    </div>
+                    <h3 className="mt-2.5 text-sm font-semibold text-base-content group-hover:text-primary">
+                      {pickText(item.title, locale)}
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-base-content/70">
+                      {pickText(item.summary, locale)}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    <span>{t.home.inspectCase}</span>
+                    <span
+                      aria-hidden="true"
+                      className="transition-transform group-hover:translate-x-0.5"
+                    >
+                      →
+                    </span>
+                  </span>
+                </div>
+              </Link>
+            ))}
         </div>
       </section>
 

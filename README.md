@@ -43,45 +43,48 @@ TxRay 的核心是 **检测 + 解释**：
 - 支持 Ethereum、Base、Arbitrum、Optimism。
 - 估算 `$ at risk`：普通 ERC-20 用 `min(当前余额, 授权额度)`；Permit2 还受 ERC-20 对 Permit2 的底层授权约束，读取失败时标为未知，不会当作零。通过服务端批量查询并缓存 CoinGecko 美元价格；页面明确展示完整、部分或不可用的价格覆盖状态。
 - 识别 spender 风险：
-  - 已知可信合约；
+  - Ethereum / Base / Arbitrum / Optimism 链级隔离的已知可信合约标签；
+  - 检测当前账户的 EIP-7702 委派状态（`0xef0100` delegation indicator），并对委派目标合约执行风险检查；
   - EOA spender；
   - 新部署的未知合约；
   - 未知合约；
-  - 链级隔离的已知合约标签；
   - Scam Sniffer 公开恶意地址情报（每日更新、公开数据约延迟 7 天）；不可用时明确降级，未知绝不等同于安全。
 - 通过已连接钱包撤销 ERC-20、NFT 和 Permit2 授权。写入前匹配目标链并模拟合约调用，交易确认后在回执区块核验对应权限是否已经清除。
-- 演示模式：`/tools/txray/approvals?demo=1`。
+- 支持分享 URL 深链接（`?chain=&address=`）与演示模式（`/tools/txray/approvals?demo=1`）。
 
 ### TxRay · 交易解码
 
-- 直接解码 calldata。
-- 有目标地址时，优先按所选链上该地址的 Etherscan 已验证 ABI 解码根调用。交易哈希自动提供目标地址，粘贴 calldata 时可手动填写。页面显示解码依据，并根据匹配的 ABI 接口形状区分 ERC-20 额度和 ERC-721 token ID。
+- 直接解码 calldata，并支持 `?chain=&tx=` / `?chain=&calldata=&target=` URL 深链接分享。
+- 优先使用本地内置与容器/Permit2 ABI 进行离线解码；有目标地址时结合 Etherscan 已验证 ABI（含 EIP-1967 等常见代理合约的一跳实现地址解析与循环保护）增强根调用与接口识别。
 - 在选定的 Ethereum、Base、Arbitrum 或 Optimism 网络通过交易哈希读取交易输入和回执。页面展示外层交易状态以及回执中可识别的 ERC-20、ERC-721 转账与授权和 NFT 集合授权事件，空 calldata 的交易也可查看回执。
 - 识别 `approve`、`setApprovalForAll`、`permit`、`transferFrom`、`transfer` 等常见选择器。
-- 递归展开 Multicall3、`multicall(bytes[])`、Safe `execTransaction`、智能账户 `execute/executeBatch` 和 ERC-4337 `handleOps`，并把风险定位到具体调用路径。
+- 递归展开 Multicall3、`multicall(bytes[])`、Safe `execTransaction` / `multiSend`、Uniswap Universal Router `execute(commands, inputs)`、智能账户 `execute/executeBatch` 和 ERC-4337 `handleOps`，并把风险定位到具体调用路径。
 - 对递归深度、节点数和原始数据预览设置硬上限；未知、截断和解析不完整的路径默认展开，不会被描述为安全。
 - 高亮高风险调用，并解释函数可能授权什么。
 - 未知选择器 fallback 到 OpenChain 签名库查询。
 
 ### Signature Risk · EIP-712 签名风险解释器
 
-- 粘贴钱包签名弹窗中的 typed-data JSON。
-- 识别 ERC-20 `permit`、Permit2 typed data 和订单类签名。
+- 粘贴钱包签名弹窗中的 typed-data JSON，或从案例库一键载入样本分析。
+- 识别 ERC-20 `permit`、Permit2 typed data（区分持续额度授权与一次性转账签名）和 Seaport / NFT 订单类签名。
+- 面向 Seaport 等订单签名展示 **Offer（你交出） vs Consideration（你收到）** 对照面板，并标出“零回报”高危订单与流向第三方的条款。
 - 抽取安全关键字段：
-  - spender / operator；
+  - spender / operator / conduit；
   - token；
   - amount；
-  - deadline / expiration；
+  - deadline / expiration / endTime；
   - verifying contract；
   - nonce。
 - 标记无限额度和长期有效签名。
 - 完全只读：不会要求钱包签署任何内容。
 
-### 原理文章
+### 案例库（Case Lab）与原理文章
 
+- 交互式案例库 `/cases`：按授权陷阱、批量与路由、签名钓鱼分类展示真实风险案例，一键带着离线确定性载荷跳转至 Decoder 或 Signature Risk 拆解分析。
 - `/articles/why-unlimited-approval-is-dangerous`
 - `/articles/permit2-eip712-phishing`
 - `/articles/why-batched-transactions-hide-risk`
+- `/articles/eip-7702-delegated-eoa-risk`
 
 站点通过轻量本地 i18n provider 支持中文和英文切换。
 
@@ -174,7 +177,8 @@ DEV_PROXY=http://127.0.0.1:10808
 ## 已知限制
 
 - Etherscan 日志每次查询对单个事件区间最多读取 10,000 条。触顶时可分段继续扫描，单个区块触顶时会保留不完整标记。若有待扫或失败区间，页面会显示扫描不完整。
-- spender 可信标签目前只对 Ethereum 主网地址生效；其他链默认按未知合约处理。
+- spender 可信标签按链隔离，目前仅收录部分已经在 Ethereum、Base、Arbitrum、Optimism 核验的 canonical 核心合约地址（如 Permit2、Uniswap Router、Safe 等）；未收录地址仍按新部署合约、普通未知合约或 EOA 处理。
+- ABI 查询支持通过 Etherscan 对常见代理合约执行一跳实现地址解析并防循环；若代理与实现合约均未验证，将回退至内置选择器/容器 ABI 或 OpenChain 查询。
 - 单次授权扫描最多查询 500 个唯一 token 的美元价格，每个服务端批次最多 100 个；超过预算、CoinGecko 无报价或无 Key 模式受上游限制时，页面会显示部分覆盖，未报价不会被当作零风险。
 - Signature Risk 会按 EIP-712 `types` 校验字段值并展开结构和数组；缺少 schema 时仅做保守字段扫描，并在页面明确提示。结构校验及模式识别不等于验证接收合约的实际语义。输入中的截止时间已过不等于本站验证了接收合约会拒绝该签名，因此不会自动降低整体风险等级。
 
@@ -200,7 +204,3 @@ pnpm e2e
 ## License
 
 [MIT](./LICENSE)
-
-
-
-- ABI 查询以目标地址为准。代理把调用转发到实现合约时，若代理自身的 ABI 无法匹配该函数，页面会回退到选择器匹配。

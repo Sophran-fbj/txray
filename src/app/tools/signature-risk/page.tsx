@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { CopyButton } from '@/components/CopyButton';
+import { pickText } from '@/content/articles';
+import { getRiskCase } from '@/content/riskCases';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   analyzeTypedData,
@@ -169,14 +172,62 @@ const EXAMPLE_SEAPORT_ZERO_RETURN = JSON.stringify(
 );
 
 export default function SignaturePage() {
-  const { t } = useI18n();
+  return (
+    <Suspense
+      fallback={
+        <AppShell maxWidth="5xl">
+          <div className="h-32 animate-pulse rounded-box border border-base-300 bg-base-200" />
+        </AppShell>
+      }
+    >
+      <SignatureContent />
+    </Suspense>
+  );
+}
+
+function SignatureContent() {
+  const { locale, t } = useI18n();
+  const searchParams = useSearchParams();
+  const initialCaseParam = searchParams.get('case') ?? '';
+  const initialMatchedCase = getRiskCase(initialCaseParam);
+  const initialSignatureCase =
+    initialMatchedCase?.tool === 'signature-risk' ? initialMatchedCase : undefined;
+
   const copy = t.signatureRisk;
-  const [input, setInput] = useState('');
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(
+    () => initialSignatureCase?.id ?? null,
+  );
+  const activeCase = activeCaseId ? getRiskCase(activeCaseId) : undefined;
+  const activeSignatureCase =
+    activeCase?.tool === 'signature-risk' ? activeCase : undefined;
+
+  const [input, setInput] = useState(() => initialSignatureCase?.payload ?? '');
   const [result, setResult] = useState<
     | { status: 'idle' }
     | { status: 'ok'; data: SignatureAnalysis }
     | { status: 'error'; error: string }
-  >({ status: 'idle' });
+  >(() => {
+    if (!initialSignatureCase) return { status: 'idle' };
+    try {
+      return { status: 'ok', data: analyzeTypedData(initialSignatureCase.payload) };
+    } catch {
+      return { status: 'idle' };
+    }
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (activeSignatureCase) {
+      params.set('case', activeSignatureCase.id);
+    } else {
+      params.delete('case');
+    }
+    const qs = params.toString();
+    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [activeSignatureCase]);
 
   function runAnalysis(value: string) {
     const trimmed = value.trim();
@@ -201,6 +252,7 @@ export default function SignaturePage() {
   }
 
   function loadSample(value: string) {
+    setActiveCaseId(null);
     setInput(value);
     runAnalysis(value);
   }
@@ -213,6 +265,42 @@ export default function SignaturePage() {
         </h1>
         <p className="mt-1 text-sm text-base-content/70">{copy.desc}</p>
       </div>
+
+      {activeSignatureCase && (
+        <div
+          data-testid="active-case-banner"
+          className="mt-4 rounded-box border border-primary/35 bg-primary/8 p-4"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge badge-primary badge-sm">{t.cases.activeCaseBanner}</span>
+              <span className="badge badge-error badge-sm">{t.cases.highRisk}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <Link
+                href={`/articles/${activeSignatureCase.articleSlug}`}
+                className="link font-medium text-primary"
+              >
+                {t.cases.readArticle} →
+              </Link>
+              <Link href="/cases" className="link link-hover text-base-content/75">
+                {t.cases.backToCases}
+              </Link>
+            </div>
+          </div>
+          <h2 className="mt-2 text-base font-semibold text-base-content">
+            {pickText(activeSignatureCase.title, locale)}
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-base-content/80">
+            <span className="font-semibold text-warning">{t.cases.lureLabel}: </span>
+            {pickText(activeSignatureCase.lure, locale)}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-base-content/80">
+            <span className="font-semibold text-primary">{t.cases.txrayFindsLabel}: </span>
+            {pickText(activeSignatureCase.whatTxRayFinds, locale)}
+          </p>
+        </div>
+      )}
 
       <div className="alert alert-warning mt-5 text-sm">
         <span>{copy.readonly}</span>
@@ -261,6 +349,7 @@ export default function SignaturePage() {
               id="typed-data-input"
               value={input}
               onChange={(e) => {
+                setActiveCaseId(null);
                 setInput(e.target.value);
                 setResult({ status: 'idle' });
               }}
@@ -279,6 +368,7 @@ export default function SignaturePage() {
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => {
+                  setActiveCaseId(null);
                   setInput('');
                   setResult({ status: 'idle' });
                 }}

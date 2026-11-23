@@ -26,6 +26,8 @@ import {
   explorerAddressUrl,
 } from '@/features/txray/chains/chains';
 import { useI18n } from '@/lib/i18n/provider';
+import { pickText } from '@/content/articles';
+import { getRiskCase } from '@/content/riskCases';
 import {
   APPROVE_EXAMPLE,
   NESTED_MULTICALL_EXAMPLE,
@@ -59,13 +61,29 @@ export default function DecoderPage() {
 }
 
 function DecoderContent() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const searchParams = useSearchParams();
-  const initialTxParam = searchParams.get('tx') ?? '';
-  const initialCalldataParam = searchParams.get('calldata') ?? '';
-  const initialTargetParam = searchParams.get('target') ?? '';
+  const initialCaseParam = searchParams.get('case') ?? '';
+  const initialMatchedCase = getRiskCase(initialCaseParam);
+  const initialDecoderCase =
+    initialMatchedCase?.tool === 'decoder' ? initialMatchedCase : undefined;
+
+  const initialTxParam = initialDecoderCase ? '' : (searchParams.get('tx') ?? '');
+  const initialCalldataParam = initialDecoderCase
+    ? initialDecoderCase.calldata
+    : (searchParams.get('calldata') ?? '');
+  const initialTargetParam = initialDecoderCase
+    ? (initialDecoderCase.target ?? '')
+    : (searchParams.get('target') ?? '');
   const initialChainParam = Number(searchParams.get('chain'));
-  const hasInitialCalldata = !initialTxParam && Boolean(initialCalldataParam);
+  const hasInitialCalldata =
+    Boolean(initialDecoderCase) || (!initialTxParam && Boolean(initialCalldataParam));
+
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(
+    () => initialDecoderCase?.id ?? null,
+  );
+  const activeCase = activeCaseId ? getRiskCase(activeCaseId) : undefined;
+  const activeDecoderCase = activeCase?.tool === 'decoder' ? activeCase : undefined;
 
   const [mode, setMode] = useState<DecoderInputMode>(() =>
     hasInitialCalldata ? 'calldata' : 'tx',
@@ -78,7 +96,8 @@ function DecoderContent() {
     hasInitialCalldata ? initialTargetParam : '',
   );
   const [chainId, setChainId] = useState(() =>
-    isSupportedTxRayChain(initialChainParam) ? initialChainParam : DEFAULT_TXRAY_CHAIN_ID,
+    initialDecoderCase?.chainId ??
+    (isSupportedTxRayChain(initialChainParam) ? initialChainParam : DEFAULT_TXRAY_CHAIN_ID),
   );
   const input = mode === 'tx' ? txInput : calldataInput;
   const targetValue = calldataTarget.trim();
@@ -94,15 +113,19 @@ function DecoderContent() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (chainId !== DEFAULT_TXRAY_CHAIN_ID) {
-      params.set('chain', String(chainId));
-    }
-    if (shareableInUrl) {
-      if (mode === 'tx') {
-        params.set('tx', value);
-      } else {
-        params.set('calldata', value);
-        if (targetAddress) params.set('target', targetAddress);
+    if (activeDecoderCase) {
+      params.set('case', activeDecoderCase.id);
+    } else {
+      if (chainId !== DEFAULT_TXRAY_CHAIN_ID) {
+        params.set('chain', String(chainId));
+      }
+      if (shareableInUrl) {
+        if (mode === 'tx') {
+          params.set('tx', value);
+        } else {
+          params.set('calldata', value);
+          if (targetAddress) params.set('target', targetAddress);
+        }
       }
     }
     const qs = params.toString();
@@ -110,7 +133,7 @@ function DecoderContent() {
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
       window.history.replaceState(null, '', nextUrl);
     }
-  }, [chainId, mode, shareableInUrl, value, targetAddress]);
+  }, [activeDecoderCase, chainId, mode, shareableInUrl, value, targetAddress]);
 
   return (
     <AppShell maxWidth="5xl" headerRight={<WalletButton />} footerNote={t.decoder.readonly}>
@@ -123,6 +146,42 @@ function DecoderContent() {
         </p>
       </div>
 
+      {activeDecoderCase && (
+        <div
+          data-testid="active-case-banner"
+          className="mt-4 rounded-box border border-primary/35 bg-primary/8 p-4"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge badge-primary badge-sm">{t.cases.activeCaseBanner}</span>
+              <span className="badge badge-error badge-sm">{t.cases.highRisk}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <Link
+                href={`/articles/${activeDecoderCase.articleSlug}`}
+                className="link font-medium text-primary"
+              >
+                {t.cases.readArticle} →
+              </Link>
+              <Link href="/cases" className="link link-hover text-base-content/75">
+                {t.cases.backToCases}
+              </Link>
+            </div>
+          </div>
+          <h2 className="mt-2 text-base font-semibold text-base-content">
+            {pickText(activeDecoderCase.title, locale)}
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-base-content/80">
+            <span className="font-semibold text-warning">{t.cases.lureLabel}: </span>
+            {pickText(activeDecoderCase.lure, locale)}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-base-content/80">
+            <span className="font-semibold text-primary">{t.cases.txrayFindsLabel}: </span>
+            {pickText(activeDecoderCase.whatTxRayFinds, locale)}
+          </p>
+        </div>
+      )}
+
       <section className="mt-5 rounded-box border border-base-300 bg-base-200 p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <fieldset>
@@ -134,7 +193,10 @@ function DecoderContent() {
                 type="button"
                 className={`btn join-item btn-sm ${mode === 'tx' ? 'btn-primary' : 'btn-outline border-base-300'}`}
                 aria-pressed={mode === 'tx'}
-                onClick={() => setMode('tx')}
+                onClick={() => {
+                  setActiveCaseId(null);
+                  setMode('tx');
+                }}
               >
                 {t.decoder.txMode}
               </button>
@@ -142,7 +204,10 @@ function DecoderContent() {
                 type="button"
                 className={`btn join-item btn-sm ${mode === 'calldata' ? 'btn-primary' : 'btn-outline border-base-300'}`}
                 aria-pressed={mode === 'calldata'}
-                onClick={() => setMode('calldata')}
+                onClick={() => {
+                  setActiveCaseId(null);
+                  setMode('calldata');
+                }}
               >
                 {t.decoder.calldataMode}
               </button>
@@ -177,11 +242,14 @@ function DecoderContent() {
           <textarea
             id="decoder-input"
             value={input}
-            onChange={(event) =>
-              mode === 'tx'
-                ? setTxInput(event.target.value)
-                : setCalldataInput(event.target.value)
-            }
+            onChange={(event) => {
+              setActiveCaseId(null);
+              if (mode === 'tx') {
+                setTxInput(event.target.value);
+              } else {
+                setCalldataInput(event.target.value);
+              }
+            }}
             placeholder={mode === 'tx' ? t.decoder.txPlaceholder : t.decoder.calldataPlaceholder}
             className="textarea textarea-bordered min-h-24 w-full break-all font-mono text-sm"
             spellCheck={false}
@@ -231,6 +299,7 @@ function DecoderContent() {
               type="button"
               className="btn btn-ghost btn-xs border border-base-300 text-primary"
               onClick={() => {
+                setActiveCaseId(null);
                 setMode('calldata');
                 setCalldataInput(APPROVE_EXAMPLE);
                 setCalldataTarget('');
@@ -242,6 +311,7 @@ function DecoderContent() {
               type="button"
               className="btn btn-ghost btn-xs border border-base-300 text-secondary"
               onClick={() => {
+                setActiveCaseId(null);
                 setMode('calldata');
                 setCalldataInput(NESTED_MULTICALL_EXAMPLE);
                 setCalldataTarget('');
@@ -271,7 +341,10 @@ function DecoderContent() {
                 value={calldataTarget}
                 spellCheck={false}
                 autoComplete="off"
-                onChange={(event) => setCalldataTarget(event.target.value)}
+                onChange={(event) => {
+                  setActiveCaseId(null);
+                  setCalldataTarget(event.target.value);
+                }}
                 aria-invalid={Boolean(targetValue && !targetAddress)}
                 aria-describedby="decoder-target-help"
               />

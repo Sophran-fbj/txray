@@ -43,45 +43,48 @@ TxRay focuses on **detect + explain**:
 - Support Ethereum, Base, Arbitrum, and Optimism.
 - Estimate `$ at risk` for ERC-20 with `min(current balance, allowance)`; Permit2 is also capped by the ERC-20 allowance to Permit2, with failed reads shown as unknown rather than zero. USD pricing is batched and cached server-side, with explicit complete, partial, or unavailable coverage states.
 - Classify spender risk:
-  - known trusted contracts,
+  - chain-scoped known trusted contract labels across Ethereum, Base, Arbitrum, and Optimism;
+  - inspect EIP-7702 account delegation (`0xef0100` indicator) and run spender risk checks on the delegated contract;
   - EOA spenders,
   - newly deployed unknown contracts,
   - unknown contracts,
-  - chain-scoped known-contract labels;
   - Scam Sniffer public malicious-address intelligence (updated daily with an approximately 7-day public-data delay); failures degrade explicitly, and unknown never means safe.
 - Revoke ERC-20, NFT, and Permit2 approvals after enforcing the target chain and simulating the write. Verify that the permission was cleared at the block recorded in the confirmed transaction receipt.
-- Demo mode: `/tools/txray/approvals?demo=1`.
+- Shareable URL deep-links (`?chain=&address=`) and Demo mode (`/tools/txray/approvals?demo=1`).
 
 ### TxRay · Transaction Decoder
 
-- Decode calldata directly.
-- Decode the root call with the Etherscan-verified ABI for the target on the selected chain when available. The address comes from the transaction hash or can be supplied with raw calldata. The decoder shows its evidence and uses matching ABI interface shapes to distinguish ERC-20 allowances from ERC-721 token IDs.
+- Decode calldata directly with shareable URL deep-links (`?chain=&tx=` / `?chain=&calldata=&target=`).
+- Decode common container and Permit2 ABIs offline via built-in definitions; when a target address is available, fetch its Etherscan-verified ABI on the selected chain with 1-hop proxy implementation resolution and self-proxy loop protection, using ABI shapes to distinguish ERC-20 allowances from ERC-721 token IDs.
 - Fetch transaction input and receipts on the selected Ethereum, Base, Arbitrum, or Optimism network. Show the outer transaction status and recognizable ERC-20, ERC-721, and collection approval receipt events, including for empty calldata.
 - Recognize common selectors such as `approve`, `setApprovalForAll`, `permit`, `transferFrom`, and `transfer`.
-- Recursively expand Multicall3, `multicall(bytes[])`, Safe `execTransaction`, smart-account `execute/executeBatch`, and ERC-4337 `handleOps`, attaching findings to concrete call paths.
+- Recursively expand Multicall3, `multicall(bytes[])`, Safe `execTransaction` / `multiSend`, Uniswap Universal Router `execute(commands, inputs)`, smart-account `execute/executeBatch`, and ERC-4337 `handleOps`, attaching findings to concrete call paths.
 - Enforce hard limits on recursion depth, node count, and raw-data previews; unknown, truncated, and incomplete paths expand by default and are never described as safe.
 - Highlight high-risk calls and explain what the function can authorize.
 - Fallback to an OpenChain signature lookup for unknown selectors.
 
 ### Signature Risk · EIP-712 Signature Risk Explainer
 
-- Paste typed-data JSON from a wallet signing prompt.
-- Recognize ERC-20 `permit`, Permit2 typed data, and order-style signatures.
+- Paste typed-data JSON from a wallet signing prompt or launch deterministic samples from Case Lab.
+- Recognize ERC-20 `permit`, Permit2 typed data (distinguishing standing allowances from one-time transfers), and Seaport / NFT order-style signatures.
+- Display a side-by-side **You give (Offer) vs You receive (Consideration)** asset breakdown for Seaport orders, surfacing critical zero-return alerts and third-party recipients.
 - Extract security-relevant fields:
-  - spender/operator,
+  - spender / operator / conduit,
   - token,
   - amount,
-  - deadline/expiration,
+  - deadline / expiration / endTime,
   - verifying contract,
   - nonce.
 - Flag unlimited amounts and long-lived signatures.
 - Fully read-only: it never asks the wallet to sign anything.
 
-### Articles
+### Case Lab & Articles
 
+- Interactive Phishing & Risk Case Lab at `/cases`: filter real-world approval, multicall, and signature traps and open any case directly inside Decoder or Signature Risk.
 - `/articles/why-unlimited-approval-is-dangerous`
 - `/articles/permit2-eip712-phishing`
 - `/articles/why-batched-transactions-hide-risk`
+- `/articles/eip-7702-delegated-eoa-risk`
 
 The site supports Chinese and English through a lightweight local i18n provider.
 
@@ -173,7 +176,8 @@ Without Redis, the service falls back to process-local rate limits, request paci
 ## Known Limitations
 
 - TxRay reads up to 10,000 Etherscan logs per attempt for an event type and block range. Saturated ranges can be subdivided and resumed. A saturated single block retains its incomplete status. Pending or failed ranges produce an incomplete-scan warning.
-- Trusted spender labels currently apply only to Ethereum mainnet; other chains default to unknown.
+- Trusted spender labels are strictly chain-scoped and cover verified canonical core contracts (such as Permit2, Uniswap routers, and Safe) across Ethereum, Base, Arbitrum, and Optimism; unlisted addresses remain classified as EOAs, newly deployed contracts, or unknown contracts.
+- ABI lookup resolves proxy implementation contracts in 1 hop with self-proxy loop protection via Etherscan; when neither the proxy nor implementation is verified, decoding falls back to built-in container/Permit2 ABIs or OpenChain lookups.
 - One approval scan queries USD prices for at most 500 unique tokens, in server batches of up to 100. Over-budget, unpriced, or upstream-limited keyless tokens produce partial coverage and are never treated as zero risk.
 - Signature Risk validates declared field values and expands structures and arrays from EIP-712 `types`. Without a schema, it performs conservative field scanning and displays a limitation warning. Structural validation and pattern matching do not verify the receiving contract's actual semantics. A deadline that has passed does not prove the receiving contract will reject the signature, so it does not automatically lower the overall risk level.
 
