@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAccount, useEnsAddress } from 'wagmi';
@@ -20,6 +20,7 @@ import {
   DEFAULT_TXRAY_CHAIN_ID,
   TXRAY_CHAINS,
   getTxRayChain,
+  isSupportedTxRayChain,
   explorerTxUrl,
 } from '@/features/txray/chains/chains';
 import { useTokenPrices } from '@/features/txray/approvals/useTokenPrices';
@@ -62,9 +63,15 @@ function ApprovalsContent() {
   const { locale, t } = useI18n();
   const searchParams = useSearchParams();
   const demoMode = searchParams.get('demo') === '1';
+  const initialChainParam = Number(searchParams.get('chain'));
+  const initialAddressParam = searchParams.get('address') ?? '';
   const { address: connected, chainId: walletChainId } = useAccount();
-  const [input, setInput] = useState('');
-  const [selectedChainId, setSelectedChainId] = useState(DEFAULT_TXRAY_CHAIN_ID);
+  const [input, setInput] = useState(() => (demoMode ? '' : initialAddressParam));
+  const [selectedChainId, setSelectedChainId] = useState(() =>
+    !demoMode && isSupportedTxRayChain(initialChainParam)
+      ? initialChainParam
+      : DEFAULT_TXRAY_CHAIN_ID,
+  );
   const [filter, setFilter] = useState<ApprovalFilter>('all');
   const [sort, setSort] = useState<ApprovalSort>('risk');
   const [lastRevocation, setLastRevocation] = useState<VerifiedRevocation>();
@@ -90,6 +97,27 @@ function ApprovalsContent() {
   } else {
     target = demoMode ? DEMO_OWNER : connected;
   }
+
+  useEffect(() => {
+    if (demoMode) return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete('demo');
+    if (selectedChainId !== DEFAULT_TXRAY_CHAIN_ID) {
+      params.set('chain', String(selectedChainId));
+    } else {
+      params.delete('chain');
+    }
+    if (trimmed && target) {
+      params.set('address', trimmed);
+    } else {
+      params.delete('address');
+    }
+    const qs = params.toString();
+    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [demoMode, selectedChainId, trimmed, target]);
 
   const approvalsQuery = useApprovals(demoMode ? undefined : target, effectiveChainId);
   const scanResult = demoMode
@@ -257,6 +285,20 @@ function ApprovalsContent() {
               <span className="text-base-content/70">{t.approvals.querying}</span>
               <span className="break-all font-mono text-primary">{target}</span>
               <CopyButton value={target} />
+              {!demoMode && (
+                <CopyButton
+                  value={() => {
+                    const params = new URLSearchParams({
+                      chain: String(effectiveChainId),
+                      address: trimmed || target,
+                    });
+                    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+                  }}
+                  text={t.common.copyLink}
+                  copiedText={t.common.linkCopied}
+                  className="border border-base-300"
+                />
+              )}
               {!trimmed && connected && (
                 <span className="badge badge-sm">{t.approvals.connectedWallet}</span>
               )}

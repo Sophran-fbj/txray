@@ -10,6 +10,8 @@ export const messages = {
       primaryNav: '主导航',
       copy: '复制',
       copied: '已复制',
+      copyLink: '复制链接',
+      linkCopied: '链接已复制',
       whyRisky: '为什么危险？',
       nav: {
         approvals: '授权检查',
@@ -521,6 +523,8 @@ export const messages = {
       primaryNav: 'Primary navigation',
       copy: 'Copy',
       copied: 'Copied',
+      copyLink: 'Copy link',
+      linkCopied: 'Link copied',
       whyRisky: 'Why risky?',
       nav: {
         approvals: 'Approvals',

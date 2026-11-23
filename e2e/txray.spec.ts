@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { APPROVE_EXAMPLE } from '../src/features/txray/decoder/examples';
 
 test('approval demo is usable and persists the English locale', async ({ page }) => {
   await page.goto('/tools/txray/approvals?demo=1');
@@ -74,4 +75,12 @@ test('decoder keeps transaction hashes and calldata in separate input modes', as
   await expect(page.getByLabel('calldata', { exact: true })).toHaveValue('');
   await page.getByRole('button', { name: '无限授权示例' }).click();
   await expect(page.getByText(/仅解读粘贴的 calldata/)).toBeVisible();
+});
+
+test('decoder initializes mode, network, and result from URL search params', async ({ page }) => {
+  await page.goto(`/tools/txray/decoder?chain=8453&calldata=${APPROVE_EXAMPLE}`);
+  await expect(page.locator('#decoder-network')).toHaveValue('8453');
+  await expect(page.getByRole('button', { name: 'calldata', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制链接' })).toBeVisible();
 });

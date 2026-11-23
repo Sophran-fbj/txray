@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { getAddress, isAddress } from 'viem';
 import { AppShell } from '@/components/AppShell';
 import { CopyButton } from '@/components/CopyButton';
@@ -21,6 +22,7 @@ import { getSpenderLabel } from '@/features/txray/approvals/spenderLabels';
 import {
   DEFAULT_TXRAY_CHAIN_ID,
   TXRAY_CHAINS,
+  isSupportedTxRayChain,
   explorerAddressUrl,
 } from '@/features/txray/chains/chains';
 import { useI18n } from '@/lib/i18n/provider';
@@ -31,14 +33,53 @@ import {
 
 const LONG_VALUE_THRESHOLD = 160;
 const LONG_VALUE_PREVIEW = 120;
+const MAX_URL_CALLDATA_CHARS = 4096;
 
 export default function DecoderPage() {
   const { t } = useI18n();
-  const [mode, setMode] = useState<DecoderInputMode>('tx');
-  const [txInput, setTxInput] = useState('');
-  const [calldataInput, setCalldataInput] = useState('');
-  const [calldataTarget, setCalldataTarget] = useState('');
-  const [chainId, setChainId] = useState(DEFAULT_TXRAY_CHAIN_ID);
+  return (
+    <Suspense
+      fallback={
+        <AppShell maxWidth="5xl" headerRight={<WalletButton />} footerNote={t.decoder.readonly}>
+          <div className="card border border-base-300 bg-base-200">
+            <div className="card-body items-center gap-3 text-base-content/70">
+              <span
+                className="loading loading-spinner loading-md text-primary"
+                aria-hidden="true"
+              />
+              <span>{t.decoder.loading}</span>
+            </div>
+          </div>
+        </AppShell>
+      }
+    >
+      <DecoderContent />
+    </Suspense>
+  );
+}
+
+function DecoderContent() {
+  const { t } = useI18n();
+  const searchParams = useSearchParams();
+  const initialTxParam = searchParams.get('tx') ?? '';
+  const initialCalldataParam = searchParams.get('calldata') ?? '';
+  const initialTargetParam = searchParams.get('target') ?? '';
+  const initialChainParam = Number(searchParams.get('chain'));
+  const hasInitialCalldata = !initialTxParam && Boolean(initialCalldataParam);
+
+  const [mode, setMode] = useState<DecoderInputMode>(() =>
+    hasInitialCalldata ? 'calldata' : 'tx',
+  );
+  const [txInput, setTxInput] = useState(() => initialTxParam);
+  const [calldataInput, setCalldataInput] = useState(() =>
+    hasInitialCalldata ? initialCalldataParam : '',
+  );
+  const [calldataTarget, setCalldataTarget] = useState(() =>
+    hasInitialCalldata ? initialTargetParam : '',
+  );
+  const [chainId, setChainId] = useState(() =>
+    isSupportedTxRayChain(initialChainParam) ? initialChainParam : DEFAULT_TXRAY_CHAIN_ID,
+  );
   const input = mode === 'tx' ? txInput : calldataInput;
   const targetValue = calldataTarget.trim();
   const targetAddress = isAddress(targetValue) ? getAddress(targetValue) : undefined;
@@ -48,6 +89,28 @@ export default function DecoderPage() {
   const value = input.trim();
   const inputValid = mode === 'tx' ? isTxHash(value) : isCalldata(value);
   const showResult = inputValid;
+  const shareableInUrl =
+    inputValid && (mode === 'tx' || value.length <= MAX_URL_CALLDATA_CHARS);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (chainId !== DEFAULT_TXRAY_CHAIN_ID) {
+      params.set('chain', String(chainId));
+    }
+    if (shareableInUrl) {
+      if (mode === 'tx') {
+        params.set('tx', value);
+      } else {
+        params.set('calldata', value);
+        if (targetAddress) params.set('target', targetAddress);
+      }
+    }
+    const qs = params.toString();
+    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [chainId, mode, shareableInUrl, value, targetAddress]);
 
   return (
     <AppShell maxWidth="5xl" headerRight={<WalletButton />} footerNote={t.decoder.readonly}>
@@ -186,6 +249,14 @@ export default function DecoderPage() {
             >
               {t.decoder.callTreeSample}
             </button>
+            {shareableInUrl && (
+              <CopyButton
+                value={() => window.location.href}
+                text={t.common.copyLink}
+                copiedText={t.common.linkCopied}
+                className="ml-auto border border-base-300"
+              />
+            )}
           </div>
 
           {mode === 'calldata' && (
