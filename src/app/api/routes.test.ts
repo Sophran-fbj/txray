@@ -79,6 +79,26 @@ describe('API input boundaries', () => {
     await expect(response.json()).resolves.toMatchObject({ signature: null });
   });
 
+  it('normalizes selectors and distinguishes a missing signature from an upstream failure', async () => {
+    const selector = '0x095ea7b3';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ ok: true, result: { function: { [selector]: [{ name: 'approve(address,uint256)' }] } } }))
+      .mockResolvedValueOnce(Response.json({ ok: true, result: { function: { [selector]: null } } }))
+      .mockResolvedValueOnce(Response.json({ ok: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    const endpoint = '/api/decode-sig?selector=0x095EA7B3';
+
+    const matched = await decodeSignature(request(endpoint, 'selector-matched'));
+    const missing = await decodeSignature(request(endpoint, 'selector-missing'));
+    const failed = await decodeSignature(request(endpoint, 'selector-failed'));
+    expect(fetchMock.mock.calls.map(([url]) => new URL(url).searchParams.get('function'))).toEqual([selector, selector, selector]);
+    await expect(matched.json()).resolves.toEqual({ signature: 'approve(address,uint256)' });
+    await expect(missing.json()).resolves.toEqual({ signature: null });
+    expect(missing.headers.get('Cache-Control')).toContain('s-maxage=60');
+    expect(failed.status).toBe(502);
+    expect(failed.headers.get('Cache-Control')).toBe('no-store');
+  });
+
   it('rejects unsupported spender-info chains', async () => {
     const response = await getSpenderInfo(
       request('/api/spender-info?chainId=999&addresses=', 'test-spender'),
@@ -87,6 +107,25 @@ describe('API input boundaries', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: 'UNSUPPORTED_CHAIN' },
     });
+  });
+
+  it('deduplicates spender addresses and leaves an unavailable snapshot uncached', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-etherscan-key';
+    const address = '0x000000000000000000000000000000000000bEEF';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'api.etherscan.io') {
+        expect(url.searchParams.get('contractaddresses')?.toLowerCase()).toBe(address.toLowerCase());
+        return Response.json({ result: [] });
+      }
+      return new Response(null, { status: 503 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await getSpenderInfo(request(`/api/spender-info?addresses=${address.toLowerCase()},${address.toLowerCase()}`, 'spender-duplicates'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    await expect(response.json()).resolves.toMatchObject({ creationComplete: true, threat: { status: 'unavailable' } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('validates token-price boundaries without calling CoinGecko', async () => {
@@ -139,6 +178,7 @@ describe('API input boundaries', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
     await expect(response.json()).resolves.toMatchObject({
       prices: { [first]: 1 },
       coverage: {
@@ -154,30 +194,38 @@ describe('API input boundaries', () => {
     process.env.COINGECKO_DEMO_API_KEY = 'test-demo-key';
     const first = '0x3333333333333333333333333333333333333333';
     const second = '0x4444444444444444444444444444444444444444';
+    let finishFetch = () => {};
+    const upstream = new Promise<void>((resolve) => { finishFetch = resolve; });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
       expect(url.searchParams.get('contract_addresses')).toBe(`${first},${second}`);
       expect(init?.headers).toMatchObject({
         'x-cg-demo-api-key': 'test-demo-key',
       });
+      await upstream;
       return new Response(
         JSON.stringify({ [first]: { usd: 1 }, [second]: { usd: 2 } }),
       );
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const response = await getTokenPrices(
-      request(
-        `/api/token-prices?chainId=1&addresses=${first},${second}`,
-        'test-prices-demo-key',
-      ),
-    );
+    const responses = Promise.all([
+      getTokenPrices(request(`/api/token-prices?chainId=1&addresses=${first},${second},${first}`, 'test-prices-demo-key')),
+      getTokenPrices(request(`/api/token-prices?chainId=1&addresses=${second},${first}`, 'test-prices-reordered')),
+    ]);
+    try {
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    } finally {
+      finishFetch();
+    }
+    const [response, reordered] = await responses;
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toMatchObject({
       prices: { [first]: 1, [second]: 2 },
       coverage: { status: 'complete', requested: 2, priced: 2, missing: [] },
     });
+    await expect(reordered.json()).resolves.toMatchObject({ prices: { [first]: 1, [second]: 2 } });
   });
 
   it('validates approval input before checking server configuration', async () => {

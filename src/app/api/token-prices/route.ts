@@ -93,19 +93,13 @@ export async function GET(request: NextRequest) {
       { status: 400 },
     );
   }
-  const addresses = [
-    ...new Set(
-      requested
-        .filter((address): address is `0x${string}` => isAddress(address))
-        .map((address) => getAddress(address).toLowerCase()),
-    ),
-  ];
-  if (addresses.length !== requested.length) {
+  if (!requested.every((address) => isAddress(address))) {
     return NextResponse.json(
-      { error: { code: 'INVALID_ADDRESS', message: '地址列表包含无效或重复地址' } },
+      { error: { code: 'INVALID_ADDRESS', message: '地址列表包含无效地址' } },
       { status: 400 },
     );
   }
+  const addresses = [...new Set(requested.map((address) => getAddress(address).toLowerCase()))];
 
   const now = Date.now();
   pruneCache(now);
@@ -129,9 +123,9 @@ export async function GET(request: NextRequest) {
     const upstreamAddresses = hasDemoKey
       ? uncached
       : uncached.slice(0, KEYLESS_UPSTREAM_BATCH_SIZE);
-    const flightKey = `${chainId}:${upstreamAddresses.join(',')}`;
+    const flightKey = `${chainId}:${[...upstreamAddresses].sort().join(',')}`;
+    let pending = inFlight.get(flightKey);
     try {
-      let pending = inFlight.get(flightKey);
       if (!pending) {
         pending = fetchPrices(chainId, upstreamAddresses);
         inFlight.set(flightKey, pending);
@@ -151,7 +145,7 @@ export async function GET(request: NextRequest) {
         message: error instanceof Error ? error.message : 'unknown error',
       });
     } finally {
-      inFlight.delete(flightKey);
+      if (inFlight.get(flightKey) === pending) inFlight.delete(flightKey);
     }
   }
 
@@ -175,7 +169,7 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        'Cache-Control': sourceAvailable
+        'Cache-Control': status === 'complete'
           ? 'public, max-age=60, s-maxage=300'
           : 'no-store',
         'X-TxRay-Guard': rateLimit.backend,

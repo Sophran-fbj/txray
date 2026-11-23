@@ -80,6 +80,7 @@ export const messages = {
       threatUnavailable:
         '公开恶意地址情报暂时不可用；未知不代表安全，请独立核实 spender。',
       threatCoverage: '恶意地址情报',
+      threatPartial: (checked: number, total: number) => `恶意地址情报已核对 ${checked} / ${total} 个 spender，其他地址的核对暂时不可用。`,
       priceUnavailable:
         '美元价格服务暂时不可用；授权与代币数量仍有效，但不会显示美元暴露估算。',
       pricePartial: (priced: number, requested: number, omitted: number) =>
@@ -548,6 +549,7 @@ export const messages = {
       threatUnavailable:
         'Public malicious-address intelligence is unavailable. Unknown does not mean safe; verify the spender independently.',
       threatCoverage: 'Malicious-address intelligence',
+      threatPartial: (checked: number, total: number) => `Threat intelligence covered ${checked} of ${total} spenders. Checks for the remaining addresses are temporarily unavailable.`,
       priceUnavailable:
         'USD pricing is unavailable. Approval and token amounts remain valid, but USD exposure estimates are hidden.',
       pricePartial: (priced: number, requested: number, omitted: number) =>

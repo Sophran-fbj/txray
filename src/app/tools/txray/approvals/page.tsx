@@ -112,12 +112,13 @@ function ApprovalsContent() {
     isError: isRiskError,
   } = useSpenderRisk(demoMode ? [] : spenders, effectiveChainId);
   const riskMap = demoMode ? demoRiskMap : liveRiskMap;
-  const threatStatus = Object.values(riskMap ?? {})[0]?.threat;
-  const threatUnavailable =
-    !demoMode &&
-    Object.values(riskMap ?? {}).some(
-      (risk) => risk.threat.status === 'unavailable',
-    );
+  const threatStatuses = Object.values(liveRiskMap ?? {}).map((risk) => risk.threat);
+  const checkedThreats = threatStatuses.filter((threat) => threat.status === 'available');
+  const threatStatus = checkedThreats[0];
+  const threatCheckedAt = checkedThreats.reduce<number | undefined>((oldest, { checkedAt }) => {
+    if (checkedAt === undefined) return oldest;
+    return oldest === undefined ? checkedAt : Math.min(oldest, checkedAt);
+  }, undefined);
   const pricedTokens = useMemo(
     () =>
       approvals
@@ -334,9 +335,11 @@ function ApprovalsContent() {
               </div>
             )}
 
-            {!isRiskError && threatUnavailable && (
+            {!demoMode && !isRiskError && checkedThreats.length < threatStatuses.length && (
               <div className="alert alert-warning mb-4 text-sm" role="alert">
-                {t.approvals.threatUnavailable}
+                {checkedThreats.length > 0
+                  ? t.approvals.threatPartial(checkedThreats.length, threatStatuses.length)
+                  : t.approvals.threatUnavailable}
               </div>
             )}
 
@@ -353,17 +356,17 @@ function ApprovalsContent() {
                 </a>
                 {' · '}
                 {t.approvals.threatSourceDelay(threatStatus.publicDelayDays)}
-                {threatStatus.checkedAt && (
+                {threatCheckedAt !== undefined && (
                   <>
                     {' · '}
                     {t.approvals.threatCheckedAt(
-                      new Date(threatStatus.checkedAt).toLocaleString(
+                      new Date(threatCheckedAt).toLocaleString(
                         locale === 'zh' ? 'zh-CN' : 'en-US',
                       ),
                     )}
                   </>
                 )}
-                {threatStatus.stale && ` · ${t.approvals.threatSourceStale}`}
+                {checkedThreats.some((threat) => threat.stale) && ` · ${t.approvals.threatSourceStale}`}
               </div>
             )}
 

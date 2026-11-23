@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const selector = req.nextUrl.searchParams.get('selector');
-  if (!selector || !/^0x[0-9a-fA-F]{8}$/.test(selector)) {
+  const selector = req.nextUrl.searchParams.get('selector')?.toLowerCase();
+  if (!selector || !/^0x[0-9a-f]{8}$/.test(selector)) {
     return NextResponse.json({ signature: null, error: '无效 selector' }, { status: 400 });
   }
 
@@ -36,14 +36,14 @@ export async function GET(req: NextRequest) {
     });
     if (!res.ok) throw new Error(`OpenChain HTTP ${res.status}`);
     const json: unknown = await res.json();
-    const list = getSignatureList(json, selector);
-    const signature =
-      list && typeof list[0]?.name === 'string' ? list[0].name : null;
+    const signature = readSignature(json, selector);
     return NextResponse.json(
       { signature },
       {
         headers: {
-          'Cache-Control': 'public, max-age=86400, s-maxage=604800',
+          'Cache-Control': signature
+            ? 'public, max-age=86400, s-maxage=604800'
+            : 'public, max-age=30, s-maxage=60',
           'X-TxRay-Guard': rateLimit.backend,
         },
       },
@@ -56,20 +56,20 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json(
       { signature: null, error: '签名数据库暂时不可用' },
-      { status: 502 },
+      { status: 502, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 }
 
-function getSignatureList(
-  value: unknown,
-  selector: string,
-): Array<{ name?: unknown }> | undefined {
-  if (!isRecord(value)) return undefined;
-  const result = value.result;
-  if (!isRecord(result)) return undefined;
-  const functions = result.function;
-  if (!isRecord(functions)) return undefined;
-  const list = functions[selector];
-  return Array.isArray(list) ? list : undefined;
+function readSignature(value: unknown, selector: string): string | null {
+  if (!isRecord(value) || value.ok === false || !isRecord(value.result) || !isRecord(value.result.function)) {
+    throw new Error('Invalid OpenChain response');
+  }
+  const list = value.result.function[selector];
+  if (list === undefined || list === null || (Array.isArray(list) && list.length === 0)) return null;
+  const first = Array.isArray(list) ? list[0] : undefined;
+  if (!isRecord(first) || typeof first.name !== 'string' || !first.name) {
+    throw new Error('Invalid OpenChain signature result');
+  }
+  return first.name;
 }

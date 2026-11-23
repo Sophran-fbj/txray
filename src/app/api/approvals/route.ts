@@ -78,6 +78,11 @@ function cacheResponse(key: string, value: ApprovalIndexPayload): void {
   responseCache.set(key, { expiresAt: now + CACHE_TTL_MS, value });
 }
 
+function readCachedResponse(key: string): ApprovalIndexPayload | undefined {
+  const cached = responseCache.get(key);
+  return cached && cached.expiresAt > Date.now() ? cached.value : undefined;
+}
+
 function topicToAddress(topic: string): Address {
   return getAddress(`0x${topic.slice(-40)}`);
 }
@@ -285,6 +290,43 @@ function parseBlockParam(value: string | null | undefined): number | undefined {
   return isBlockNumber(number) ? number : undefined;
 }
 
+async function scanAndCache(owner: string, chainId: number, apiKey: string, cacheKey: string) {
+  const block = await fetchSnapshotBlock(chainId, apiKey);
+  const value = await scanApprovals(owner, chainId, apiKey, block);
+  if (value.coverage.status === 'complete') {
+    cacheResponse(cacheKey, value);
+    try {
+      await setSharedJson(SHARED_CACHE_NAMESPACE, cacheKey, value, SHARED_CACHE_TTL_SECONDS);
+    } catch (error) {
+      console.warn('[approvals] shared cache write failed', {
+        chainId,
+        message: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+  }
+  return value;
+}
+
+function getPendingScan(owner: string, chainId: number, apiKey: string, cacheKey: string) {
+  const existing = inFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const pending = scanAndCache(owner, chainId, apiKey, cacheKey).finally(() => {
+    if (inFlight.get(cacheKey) === pending) inFlight.delete(cacheKey);
+  });
+  inFlight.set(cacheKey, pending);
+  return pending;
+}
+
+function upstreamFailure(chainId: number, error: unknown, guardBackend: string) {
+  const message = error instanceof Error ? error.message : '上游查询失败';
+  console.error('[approvals] upstream scan failed', { chainId, message });
+  return NextResponse.json(
+    { error: { code: 'UPSTREAM_FAILED', message: '授权索引服务暂时不可用，请稍后重试' } },
+    { status: 502, headers: { 'Cache-Control': 'no-store', 'X-TxRay-Guard': guardBackend } },
+  );
+}
+
 export async function GET(request: NextRequest) {
   const rateLimit = await checkRateLimit(
     `approvals:${requestClientKey(request.headers)}`,
@@ -337,15 +379,19 @@ export async function GET(request: NextRequest) {
 
   const owner = getAddress(ownerParam);
   if (continuation) {
-    const value = await scanApprovals(owner, chainId, apiKey, continuation.snapshotBlock, [continuation.range]);
-    return NextResponse.json(value, {
-      headers: { 'Cache-Control': 'no-store', 'X-TxRay-Guard': rateLimit.backend },
-    });
+    try {
+      const value = await scanApprovals(owner, chainId, apiKey, continuation.snapshotBlock, [continuation.range]);
+      return NextResponse.json(value, {
+        headers: { 'Cache-Control': 'no-store', 'X-TxRay-Guard': rateLimit.backend },
+      });
+    } catch (error) {
+      return upstreamFailure(chainId, error, rateLimit.backend);
+    }
   }
   const cacheKey = `${chainId}:${owner.toLowerCase()}`;
-  const cached = responseCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.value, {
+  const cached = readCachedResponse(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
       headers: {
         'Cache-Control': 'public, max-age=30, s-maxage=60',
         'X-TxRay-Cache': 'memory',
@@ -358,12 +404,13 @@ export async function GET(request: NextRequest) {
   try {
     const shared = await getSharedJson(SHARED_CACHE_NAMESPACE, cacheKey);
     if (shared.status === 'hit') {
-      const value = parseApprovalIndexPayload(shared.value);
-      cacheResponse(cacheKey, value);
+      const cachedAfterSharedRead = readCachedResponse(cacheKey);
+      const value = cachedAfterSharedRead ?? parseApprovalIndexPayload(shared.value);
+      if (!cachedAfterSharedRead) cacheResponse(cacheKey, value);
       return NextResponse.json(value, {
         headers: {
           'Cache-Control': 'public, max-age=30, s-maxage=60',
-          'X-TxRay-Cache': 'shared',
+          'X-TxRay-Cache': cachedAfterSharedRead ? 'memory' : 'shared',
           'X-TxRay-Guard': rateLimit.backend,
         },
       });
@@ -378,29 +425,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let pending = inFlight.get(cacheKey);
-    if (!pending) {
-      pending = fetchSnapshotBlock(chainId, apiKey).then((block) => scanApprovals(owner, chainId, apiKey, block));
-      inFlight.set(cacheKey, pending);
-    }
-    const value = await pending;
+    const cachedAfterSharedRead = readCachedResponse(cacheKey);
+    if (cachedAfterSharedRead) sharedCacheStatus = 'memory';
+    const value = cachedAfterSharedRead ?? await getPendingScan(owner, chainId, apiKey, cacheKey);
     if (value.coverage.status === 'partial') {
       return NextResponse.json(value, {
         headers: { 'Cache-Control': 'no-store', 'X-TxRay-Cache': sharedCacheStatus, 'X-TxRay-Guard': rateLimit.backend },
-      });
-    }
-    cacheResponse(cacheKey, value);
-    try {
-      await setSharedJson(
-        SHARED_CACHE_NAMESPACE,
-        cacheKey,
-        value,
-        SHARED_CACHE_TTL_SECONDS,
-      );
-    } catch (error) {
-      console.warn('[approvals] shared cache write failed', {
-        chainId,
-        message: error instanceof Error ? error.message : 'unknown error',
       });
     }
     return NextResponse.json(value, {
@@ -411,13 +441,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '上游查询失败';
-    console.error('[approvals] upstream scan failed', { chainId, message });
-    return NextResponse.json(
-      { error: { code: 'UPSTREAM_FAILED', message: '授权索引服务暂时不可用，请稍后重试' } },
-      { status: 502 },
-    );
-  } finally {
-    inFlight.delete(cacheKey);
+    return upstreamFailure(chainId, error, rateLimit.backend);
   }
 }

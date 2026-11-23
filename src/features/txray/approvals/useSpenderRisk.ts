@@ -2,9 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { usePublicClient } from 'wagmi';
-import { getAddress, isAddress, type Address, type PublicClient } from 'viem';
+import { getAddress, isAddress, isHex, type Address, type PublicClient } from 'viem';
 import { getSpenderLabel } from './spenderLabels';
 import { isRecord } from '@/lib/validation';
+import { runInChunks } from '@/lib/web3/runInChunks';
 
 export type RiskLevel = 'malicious' | 'eoa' | 'new' | 'unknown' | 'known';
 
@@ -110,7 +111,7 @@ export function useSpenderRisk(spenders: Address[], chainId = 1) {
   });
 }
 
-async function fetchSpenderRisk(
+export async function fetchSpenderRisk(
   client: PublicClient,
   spenders: Address[],
   chainId: number,
@@ -121,28 +122,13 @@ async function fetchSpenderRisk(
     ).values(),
   ];
 
-  const codes: Array<`0x${string}` | undefined> = [];
-  for (let index = 0; index < unique.length; index += 20) {
-    const chunk = unique.slice(index, index + 20);
-    codes.push(
-      ...(await Promise.all(
-        chunk.map((address) =>
-          client.getCode({ address }).catch(() => undefined),
-        ),
-      )),
-    );
-  }
+  const eoa = await runInChunks(unique, 20, (chunk) => Promise.all(chunk.map((address) =>
+    client.getCode({ address })
+      .then((code) => code === undefined || code === '0x' ? true : isHex(code) ? false : undefined)
+      .catch(() => undefined),
+  )));
 
-  const eoaByAddress: Record<string, boolean | undefined> = {};
-  unique.forEach((address, index) => {
-    const code = codes[index];
-    eoaByAddress[address.toLowerCase()] =
-      code === undefined ? undefined : code === '0x';
-  });
-
-  const createdMap: Record<string, number | null> = {};
-  const malicious = new Set<string>();
-  let threat = DEFAULT_THREAT_STATUS;
+  const metadata = new Map<string, SpenderInfoPayload>();
   for (let index = 0; index < unique.length; index += 25) {
     const chunk = unique.slice(index, index + 25);
     try {
@@ -152,25 +138,24 @@ async function fetchSpenderRisk(
       if (!response.ok) continue;
       const json: unknown = await response.json();
       const parsed = parseSpenderInfoPayload(json);
-      Object.assign(createdMap, parsed.created);
-      parsed.malicious.forEach((address) => malicious.add(address));
-      if (parsed.threat.status === 'available') threat = parsed.threat;
+      for (const address of chunk) metadata.set(address.toLowerCase(), parsed);
     } catch {
-      // Deployment age is optional; code verification is tracked separately.
+      // Leave only this batch's deployment and threat coverage unknown.
     }
   }
 
   const now = Math.floor(Date.now() / 1000);
   const result: Record<string, SpenderRisk> = {};
-  for (const address of unique) {
+  for (const [index, address] of unique.entries()) {
     const key = address.toLowerCase();
+    const info = metadata.get(key);
     result[key] = classifySpenderRisk({
       address,
       chainId,
-      isEoa: eoaByAddress[key],
-      createdAt: createdMap[key] ?? undefined,
-      malicious: malicious.has(key),
-      threat,
+      isEoa: eoa[index],
+      createdAt: info?.created[key] ?? undefined,
+      malicious: info?.threat.status === 'available' && info.malicious.has(key),
+      threat: info?.threat,
       now,
     });
   }

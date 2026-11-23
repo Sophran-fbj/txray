@@ -1,5 +1,6 @@
-import { erc20Abi, erc721Abi, getAddress, isAddress, zeroAddress, type Address, type PublicClient } from 'viem';
+import { BaseError, ContractFunctionRevertedError, erc20Abi, erc721Abi, getAddress, isAddress, parseAbiItem, zeroAddress, type Address, type PublicClient } from 'viem';
 import { runInChunks } from '@/lib/web3/runInChunks';
+import { isRecord } from '@/lib/validation';
 import type { ApprovalIndexPayload, ApprovalPair, NftTokenIndex } from './approvalIndex';
 import { PERMIT2_ADDRESS, permit2Abi } from './permit2';
 import {
@@ -10,8 +11,16 @@ import {
 } from './multicallResults';
 
 const MULTICALL_CHUNK_SIZE = 100;
+const nftOwnerAbi = [...erc721Abi, parseAbiItem('error ERC721NonexistentToken(uint256 tokenId)')] as const;
 const isAddressResult = (value: unknown): value is Address =>
   typeof value === 'string' && isAddress(value);
+
+function isMissingNft(result: unknown, tokenId: string): boolean {
+  if (!isRecord(result) || result.status !== 'failure' || !(result.error instanceof BaseError)) return false;
+  const reverted = result.error.walk((error) => error instanceof ContractFunctionRevertedError);
+  return reverted instanceof ContractFunctionRevertedError &&
+    reverted.data?.errorName === 'ERC721NonexistentToken' && reverted.data.args?.[0] === BigInt(tokenId);
+}
 
 export interface LiveErc20Approval extends ApprovalPair {
   allowance: bigint;
@@ -69,7 +78,7 @@ export async function readCurrentApprovalState(
         contracts: chunk.flatMap((item) => [
           {
             address: item.token,
-            abi: erc721Abi,
+            abi: nftOwnerAbi,
             functionName: 'ownerOf' as const,
             args: [BigInt(item.tokenId)] as const,
           },
@@ -101,10 +110,6 @@ export async function readCurrentApprovalState(
   let failedReads =
     allowances.filter((result) => readBigIntResult(result) === undefined).length +
     nftApproved.filter((result) => readBooleanResult(result) === undefined).length +
-    index.nftToken.filter((_, itemIndex) =>
-      !isAddressResult(readSuccessResult(nftTokenState[itemIndex * 2])) ||
-      !isAddressResult(readSuccessResult(nftTokenState[itemIndex * 2 + 1])),
-    ).length +
     permit2Allowances.filter((result) => readPermit2Result(result) === undefined)
       .length;
 
@@ -116,11 +121,21 @@ export async function readCurrentApprovalState(
     (_, itemIndex) => readBooleanResult(nftApproved[itemIndex]) === true,
   );
   const nftToken = index.nftToken.flatMap((item, itemIndex) => {
-    const currentOwner = readSuccessResult(nftTokenState[itemIndex * 2]);
+    const ownerResult = nftTokenState[itemIndex * 2];
+    if (isMissingNft(ownerResult, item.tokenId)) return [];
+    const currentOwner = readSuccessResult(ownerResult);
+    if (!isAddressResult(currentOwner)) {
+      failedReads += 1;
+      return [];
+    }
+    if (currentOwner.toLowerCase() !== owner.toLowerCase()) return [];
+
     const approved = readSuccessResult(nftTokenState[itemIndex * 2 + 1]);
-    if (!isAddressResult(currentOwner) || !isAddressResult(approved) ||
-      currentOwner.toLowerCase() !== owner.toLowerCase() ||
-      approved.toLowerCase() === zeroAddress.toLowerCase()) return [];
+    if (!isAddressResult(approved)) {
+      failedReads += 1;
+      return [];
+    }
+    if (approved.toLowerCase() === zeroAddress) return [];
     return [{ ...item, spender: getAddress(approved) }];
   });
   const now = Math.floor(Date.now() / 1000);

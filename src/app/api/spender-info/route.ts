@@ -68,25 +68,25 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const addresses = [
-    ...new Set(
-      requested
-        .filter((address): address is `0x${string}` => isAddress(address))
-        .map((address) => getAddress(address)),
-    ),
-  ];
-  if (addresses.length !== requested.length) {
+  if (!requested.every((address) => isAddress(address))) {
     return NextResponse.json(
       { error: { code: 'INVALID_ADDRESS', message: '地址列表包含无效地址' } },
       { status: 400 },
     );
   }
+  const addresses = [...new Set(requested.map((address) => getAddress(address)))];
   if (!addresses.length) return NextResponse.json({ created: {}, complete: true });
 
   const created: Record<string, number | null> = {};
   let creationComplete = true;
   const apiKey = process.env.ETHERSCAN_API_KEY;
-  const threatSnapshotPromise = getThreatFeedSnapshot();
+  const threatSnapshotPromise = getThreatFeedSnapshot().catch((error: unknown) => {
+    console.error('[spender-info] threat feed request failed', {
+      chainId,
+      message: error instanceof Error ? error.message : 'unknown error',
+    });
+    return null;
+  });
 
   for (let index = 0; apiKey && index < addresses.length; index += 5) {
     const chunk = addresses.slice(index, index + 5);
@@ -130,46 +130,14 @@ export async function GET(request: NextRequest) {
 
   if (!apiKey) creationComplete = false;
 
-  let threat:
-    | {
-        status: 'available';
-        malicious: string[];
-        checkedAt: number;
-        stale: boolean;
-        source: typeof SCAM_SNIFFER_SOURCE;
-      }
-    | {
-        status: 'unavailable';
-        malicious: string[];
-        checkedAt: null;
-        stale: false;
-        source: typeof SCAM_SNIFFER_SOURCE;
+  const snapshot = await threatSnapshotPromise;
+  const threat = {
+    status: snapshot ? 'available' : 'unavailable',
+    malicious: snapshot ? addresses.filter((address) => snapshot.addresses.has(address.toLowerCase())) : [],
+    checkedAt: snapshot?.fetchedAt ?? null,
+    stale: snapshot?.stale ?? false,
+    source: SCAM_SNIFFER_SOURCE,
   };
-
-  try {
-    const snapshot = await threatSnapshotPromise;
-    threat = {
-      status: 'available',
-      malicious: addresses.filter((address) =>
-        snapshot.addresses.has(address.toLowerCase()),
-      ),
-      checkedAt: snapshot.fetchedAt,
-      stale: snapshot.stale,
-      source: SCAM_SNIFFER_SOURCE,
-    };
-  } catch (error) {
-    console.error('[spender-info] threat feed request failed', {
-      chainId,
-      message: error instanceof Error ? error.message : 'unknown error',
-    });
-    threat = {
-      status: 'unavailable',
-      malicious: [],
-      checkedAt: null,
-      stale: false,
-      source: SCAM_SNIFFER_SOURCE,
-    };
-  }
 
   return NextResponse.json(
     {
@@ -180,7 +148,9 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        'Cache-Control': 'public, max-age=300, s-maxage=3600',
+        'Cache-Control': creationComplete && threat.status === 'available' && !threat.stale
+          ? 'public, max-age=300, s-maxage=3600'
+          : 'no-store',
         'X-TxRay-Guard': rateLimit.backend,
       },
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { decodeFunctionResult, encodeFunctionResult, getAddress, zeroAddress, type PublicClient } from 'viem';
+import { ContractFunctionRevertedError, decodeFunctionResult, encodeErrorResult, encodeFunctionResult, getAddress, parseAbi, zeroAddress, type PublicClient } from 'viem';
 import type { ApprovalIndexPayload } from './approvalIndex';
 import { readCurrentApprovalState } from './readCurrentApprovalState';
 import { PERMIT2_ADDRESS, permit2Abi } from './permit2';
@@ -29,6 +29,16 @@ describe('current ERC-721 token approvals', () => {
   it('drops stale approvals after a transfer or revoke', async () => {
     expect((await readCurrentApprovalState(clientFor(spender, spender), owner, index)).nftToken).toEqual([]);
     expect((await readCurrentApprovalState(clientFor(owner, zeroAddress), owner, index)).nftToken).toEqual([]);
+  });
+
+  it('excludes a confirmed nonexistent token and keeps other reverts incomplete', async () => {
+    const abi = parseAbi(['error ERC721NonexistentToken(uint256 tokenId)']);
+    const data = encodeErrorResult({ abi, errorName: 'ERC721NonexistentToken', args: [7n] });
+    const failure = { status: 'failure', error: new ContractFunctionRevertedError({ abi, data, functionName: 'ownerOf' }) };
+    const unavailable = { status: 'failure', error: new Error('RPC unavailable') };
+    const client = { multicall: vi.fn().mockResolvedValueOnce([failure, unavailable]).mockResolvedValueOnce([unavailable, unavailable]) } as unknown as PublicClient;
+    await expect(readCurrentApprovalState(client, owner, index)).resolves.toMatchObject({ nftToken: [], failedReads: 0 });
+    await expect(readCurrentApprovalState(client, owner, index)).resolves.toMatchObject({ nftToken: [], failedReads: 1 });
   });
 });
 

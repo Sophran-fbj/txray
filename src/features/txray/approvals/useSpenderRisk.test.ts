@@ -1,10 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createPublicClient, custom, getAddress } from 'viem';
 import {
   classifySpenderRisk,
+  fetchSpenderRisk,
   parseSpenderInfoPayload,
 } from './useSpenderRisk';
 
 const NOW = 1_800_000_000;
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('tracks threat coverage per batch and distinguishes empty code from RPC failure', async () => {
+  const addresses = Array.from({ length: 26 }, (_, index) => getAddress(`0x${(index + 1).toString(16).padStart(40, '0')}`));
+  const [noCode, malicious] = addresses;
+  const last = addresses[25];
+  const client = createPublicClient({ transport: custom({
+    async request({ params }) {
+      const address = Array.isArray(params) ? params[0] : undefined;
+      if (address === noCode) return '0x';
+      if (typeof address === 'string' && address.toLowerCase() === last.toLowerCase()) throw new Error('RPC unavailable');
+      return '0x6000';
+    },
+  }, { retryCount: 0 }) });
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(Response.json({ created: {}, threat: {
+      status: 'available', malicious: [malicious], checkedAt: NOW * 1000,
+      source: { name: 'Scam Sniffer', repositoryUrl: 'https://github.com/scamsniffer/scam-database', publicDelayDays: 7 },
+    } }))
+    .mockResolvedValueOnce(new Response(null, { status: 503 }));
+  vi.stubGlobal('fetch', fetchMock);
+
+  const result = await fetchSpenderRisk(client, addresses, 1);
+  expect(Object.values(result).filter((risk) => risk.threat.status === 'available')).toHaveLength(25);
+  expect(result[noCode.toLowerCase()]).toMatchObject({ level: 'eoa', codeVerified: true });
+  expect(result[malicious.toLowerCase()].level).toBe('malicious');
+  expect(result[last.toLowerCase()]).toMatchObject({ level: 'unknown', codeVerified: false, threat: { status: 'unavailable' } });
+});
 
 describe('classifySpenderRisk', () => {
   it('flags EOA spenders as high-risk even if they are otherwise unknown', () => {
