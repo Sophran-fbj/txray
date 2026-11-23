@@ -6,7 +6,7 @@ import {
   type PublicClient,
 } from 'viem';
 import { runInChunks } from '@/lib/web3/runInChunks';
-import { PERMIT2_UNLIMITED_THRESHOLD } from './permit2';
+import { hasBroadApproval } from './approvalScope';
 import {
   readBigIntResult,
   readSuccessResult,
@@ -21,7 +21,6 @@ import type {
   Permit2Approval,
 } from './types';
 
-const UNLIMITED_THRESHOLD = 2n ** 200n;
 const MULTICALL_CHUNK_SIZE = 100;
 
 export function spendablePermit2Amount(
@@ -138,7 +137,6 @@ export async function enrichApprovals(
     token: pair.token,
     spender: pair.spender,
     allowance: pair.allowance,
-    unlimited: pair.allowance > UNLIMITED_THRESHOLD,
     ...readDisplay(index, pair.allowance),
   }));
   const permit2: Permit2Approval[] = current.permit2.map((pair, index) => ({
@@ -148,7 +146,6 @@ export async function enrichApprovals(
     spender: pair.spender,
     amount: pair.amount,
     expiration: pair.expiration,
-    unlimited: pair.amount > PERMIT2_UNLIMITED_THRESHOLD,
     upstreamAllowance: current.permit2TokenAllowances[pair.token.toLowerCase()],
     ...readDisplay(current.erc20.length + index, pair.amount, {
       allowance: current.permit2TokenAllowances[pair.token.toLowerCase()],
@@ -179,7 +176,7 @@ export async function enrichApprovals(
 
   return {
     approvals: [...erc20, ...permit2, ...nft, ...nftToken].sort(
-      (left, right) => Number(isRisky(right)) - Number(isRisky(left)),
+      (left, right) => Number(hasBroadApproval(right)) - Number(hasBroadApproval(left)),
     ),
     failedDecimals,
     failedBalances,
@@ -191,8 +188,3 @@ const pairKey = (token: Address, spender: Address) =>
 
 const shortAddress = (address: string) =>
   `${address.slice(0, 6)}…${address.slice(-4)}`;
-
-const isRisky = (approval: Approval) =>
-  (approval.kind === 'erc20' && approval.unlimited) ||
-  (approval.kind === 'permit2' && approval.unlimited) ||
-  approval.kind === 'nft';

@@ -5,9 +5,6 @@ export const PERMIT2_ADDRESS = getAddress(
   '0x000000000022d473030f116ddee9f6b43ac78ba3',
 );
 
-// 超过此量级即视为无限（uint160 最大值约 2^160）
-export const PERMIT2_UNLIMITED_THRESHOLD = 2n ** 150n;
-
 export const permit2Abi = [
   {
     type: 'function',

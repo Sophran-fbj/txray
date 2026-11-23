@@ -1,7 +1,8 @@
 import type { Approval } from './types';
 import type { SpenderRisk } from './useSpenderRisk';
+import { hasBroadApproval } from './approvalScope';
 
-export type ApprovalFilter = 'all' | 'attention' | 'unlimited';
+export type ApprovalFilter = 'all' | 'attention' | 'broad';
 export type ApprovalSort = 'risk' | 'exposure' | 'asset';
 
 export function selectApprovals(
@@ -13,9 +14,9 @@ export function selectApprovals(
 ): Approval[] {
   const selected = approvals.filter((approval) => {
     if (filter === 'all') return true;
-    if (filter === 'unlimited') return isUnlimited(approval);
+    if (filter === 'broad') return hasBroadApproval(approval);
     const risk = risks?.[approval.spender.toLowerCase()];
-    return isUnlimited(approval) || !risk || risk.level !== 'known';
+    return hasBroadApproval(approval) || !risk || risk.level !== 'known';
   });
 
   return selected.sort((a, b) => {
@@ -33,16 +34,11 @@ export function selectApprovals(
     }
     return (
       riskPriority(b, risks) - riskPriority(a, risks) ||
-      Number(isUnlimited(b)) - Number(isUnlimited(a)) ||
+      Number(hasBroadApproval(b)) - Number(hasBroadApproval(a)) ||
       a.symbol.localeCompare(b.symbol) ||
       a.id.localeCompare(b.id)
     );
   });
-}
-
-function isUnlimited(approval: Approval): boolean {
-  return approval.kind === 'nft' ||
-    (approval.kind !== 'nft-token' && approval.unlimited);
 }
 
 function riskPriority(

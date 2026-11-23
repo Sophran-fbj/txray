@@ -18,7 +18,6 @@ export const demoApprovals: Approval[] = [
     spender: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
     allowance:
       115792089237316195423570985008687907853269984665640564039457584007913129639935n,
-    unlimited: true,
     symbol: 'USDC',
     decimals: 6,
     amountText: '无限',
@@ -32,7 +31,6 @@ export const demoApprovals: Approval[] = [
     spender: '0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B',
     amount: 1461501637330902918203684832716283019655932542975n,
     expiration: 4102444800,
-    unlimited: true,
     symbol: 'WETH',
     decimals: 18,
     amountText: '无限',

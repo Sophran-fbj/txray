@@ -95,6 +95,7 @@ export interface RiskFinding {
 
 export type RiskCode =
   | 'erc20-max-allowance'
+  | 'erc20-large-allowance'
   | 'erc20-increase-allowance'
   | 'nft-approval-for-all'
   | 'erc20-permit'

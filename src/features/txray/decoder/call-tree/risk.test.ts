@@ -64,6 +64,15 @@ describe('风险规则：授权类', () => {
     expect(codes(result.root)).not.toContain('erc20-max-allowance');
   });
 
+  it('reports a large finite amount without marking it as the maximum', () => {
+    const result = buildCallTree(
+      { to: ADDR.usdc, data: encodeApprove(ADDR.spender, MAX_UINT256 - 1n) },
+      { nowMs: NOW_MS },
+    );
+    expect(findByCode(result.root, 'erc20-large-allowance')[0]?.finding.severity).toBe('medium');
+    expect(codes(result.root)).not.toContain('erc20-max-allowance');
+  });
+
   it('erc20-increase-allowance → medium', () => {
     const result = buildCallTree(
       { to: ADDR.usdc, data: encodeIncreaseAllowance(5n) },

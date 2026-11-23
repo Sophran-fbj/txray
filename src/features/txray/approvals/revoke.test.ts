@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { getAddress, zeroAddress } from 'viem';
+import { describe, expect, it, vi } from 'vitest';
+import { getAddress, zeroAddress, type PublicClient } from 'viem';
 import { PERMIT2_ADDRESS } from './permit2';
-import { createRevokeCall } from './revoke';
+import { createRevokeCall, isApprovalCleared } from './revoke';
 import type { Approval } from './useApprovals';
 
 const token = getAddress('0x0000000000000000000000000000000000000001');
@@ -11,7 +11,7 @@ describe('createRevokeCall', () => {
   it('builds an ERC-20 zero approval', () => {
     const approval: Approval = {
       kind: 'erc20', id: 'erc20', token, spender, allowance: 1n,
-      unlimited: false, symbol: 'TKN', decimals: 18, amountText: '1',
+      symbol: 'TKN', decimals: 18, amountText: '1',
     };
     const call = createRevokeCall(approval);
     expect(call).toMatchObject({
@@ -43,7 +43,7 @@ describe('createRevokeCall', () => {
   it('builds a Permit2 zero allowance with zero expiration', () => {
     const approval: Approval = {
       kind: 'permit2', id: 'permit2', token, spender, amount: 1n,
-      expiration: 1, unlimited: false, symbol: 'TKN', decimals: 18,
+      expiration: 1, symbol: 'TKN', decimals: 18,
       amountText: '1',
     };
     const call = createRevokeCall(approval);
@@ -51,5 +51,25 @@ describe('createRevokeCall', () => {
       kind: 'permit2', address: PERMIT2_ADDRESS, functionName: 'approve',
       args: [token, spender, 0n, 0],
     });
+  });
+});
+
+describe('isApprovalCleared', () => {
+  const owner = getAddress('0x0000000000000000000000000000000000000003');
+  const base = { token, spender, id: 'test', symbol: 'TKN' };
+  const fungible = { ...base, decimals: 18, amountText: '1' };
+  const cases = [
+    { approval: { ...fungible, kind: 'erc20', allowance: 1n }, target: token, fn: 'allowance', args: [owner, spender], active: 1n, cleared: 0n },
+    { approval: { ...base, kind: 'nft' }, target: token, fn: 'isApprovedForAll', args: [owner, spender], active: true, cleared: false },
+    { approval: { ...base, kind: 'nft-token', tokenId: '7' }, target: token, fn: 'getApproved', args: [7n], active: spender, cleared: zeroAddress },
+    { approval: { ...fungible, kind: 'permit2', amount: 1n, expiration: 1 }, target: PERMIT2_ADDRESS, fn: 'allowance', args: [owner, token, spender], active: [1n, 0, 1], cleared: [0n, 0, 1] },
+  ] as const;
+
+  it.each(cases)('verifies $approval.kind at the receipt block', async ({ approval, target, fn, args, active, cleared }) => {
+    const readContract = vi.fn().mockResolvedValueOnce(active).mockResolvedValueOnce(cleared);
+    const client = { readContract } as unknown as PublicClient;
+    await expect(isApprovalCleared(client, owner, approval, 42n)).resolves.toBe(false);
+    await expect(isApprovalCleared(client, owner, approval, 42n)).resolves.toBe(true);
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({ address: target, functionName: fn, args, blockNumber: 42n }));
   });
 });

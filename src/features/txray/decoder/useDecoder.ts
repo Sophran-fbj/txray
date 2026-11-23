@@ -16,12 +16,15 @@ import {
   type KnownExplainKey,
 } from './signatures';
 import { isRecord } from '@/lib/validation';
+import { classifyApprovalAmount, type ApprovalAmountScope } from '@/lib/web3/approvalAmount';
+export { isMaxUintValue } from '@/lib/web3/approvalAmount';
 
 export interface DecodedParam {
   name?: string;
   type: string;
   value: string;
   isAddress: boolean;
+  approvalAmountScope?: ApprovalAmountScope;
 }
 
 export interface DecodedResult {
@@ -135,13 +138,17 @@ export async function decodeInput(
 
   let danger: Danger = functionName ? known?.danger ?? 'none' : 'none';
   let explainKey: KnownExplainKey | undefined = functionName ? known?.explainKey : undefined;
+  const approvalAmount = functionName && (selector === '0x095ea7b3' ? params[1] : selector === '0xd505accf' ? params[2] : undefined);
+  if (approvalAmount && /^\d+$/.test(approvalAmount.value)) {
+    approvalAmount.approvalAmountScope = classifyApprovalAmount(BigInt(approvalAmount.value), 256);
+  }
   if (functionName && selector === '0x095ea7b3') {
     // approve(address,uint256) is shared by ERC-20 and ERC-721. Without a
     // verified target ABI, zero can mean ERC-20 revocation or NFT tokenId 0.
     if (params[1]?.value === '0') {
       danger = 'medium';
       explainKey = 'approveZeroAmbiguous';
-    } else if (isMaxUintValue('uint256', params[1]?.value ?? '')) {
+    } else if (params[1]?.approvalAmountScope === 'max') {
       danger = 'high';
     }
   }
@@ -185,12 +192,4 @@ function formatValue(value: unknown): string {
     );
   }
   return String(value);
-}
-
-export function isMaxUintValue(type: string, value: string): boolean {
-  const match = /^uint(\d{0,3})$/.exec(type);
-  if (!match || !/^\d+$/.test(value)) return false;
-  const bits = match[1] ? Number(match[1]) : 256;
-  if (bits < 8 || bits > 256 || bits % 8 !== 0) return false;
-  return BigInt(value) === 2n ** BigInt(bits) - 1n;
 }

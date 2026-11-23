@@ -15,7 +15,6 @@ export interface Erc20Approval extends FungibleApprovalDisplay {
   token: Address;
   spender: Address;
   allowance: bigint;
-  unlimited: boolean;
 }
 
 export interface NftApproval {
@@ -38,7 +37,6 @@ export interface Permit2Approval extends FungibleApprovalDisplay {
   spender: Address;
   amount: bigint;
   expiration: number;
-  unlimited: boolean;
   upstreamAllowance?: bigint;
 }
 

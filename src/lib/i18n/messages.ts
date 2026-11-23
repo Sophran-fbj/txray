@@ -2,6 +2,7 @@
 
 export const messages = {
   zh: {
+    approvalScope: { max: '最大额度', large: '大额授权', collection: '整集合授权' },
     common: {
       backHome: '返回首页',
       articles: '文章',
@@ -90,7 +91,7 @@ export const messages = {
       filterLabel: '筛选授权',
       filterAll: '全部',
       filterAttention: '需关注（含待核实）',
-      filterUnlimited: '无限 / 全集合授权',
+      filterBroad: '最大额度、大额或整集合授权',
       sortLabel: '排序',
       sortRisk: '风险优先',
       sortExposure: '估算美元暴露金额',
@@ -109,16 +110,15 @@ export const messages = {
       readonlyNotice: '🔒 只读查询不发起任何交易；撤销由你的钱包签名，本站绝不接触私钥。',
       nftCollection: 'NFT 集合',
       nftToken: '单件 NFT',
-      allNfts: '全部 NFT',
       upstreamUnknown: '底层 ERC-20 授权读取失败；可动用额度未知',
       upstreamZero: '底层 ERC-20 授权为 0；内部权限仍存在',
       upstreamLimited: '可动用额度受底层 ERC-20 授权约束',
-      unlimited: '无限',
       permanent: '永久',
       expires: (date: string) => `到期 ${date}`,
       exposure: '暴露',
       unknown: '未知',
       revoked: '已撤销',
+      revokedNotice: (symbol: string) => `已核验 ${symbol} 授权撤销成功。`,
       revoke: '撤销',
       revokeTitle: '撤销此授权',
       revokeDisabledTitle: '连接该地址的钱包才能撤销',
@@ -130,6 +130,16 @@ export const messages = {
       cancelled: '已取消',
       walletUnavailable: '钱包或目标链 RPC 不可用',
       revokeFailed: '撤销交易准备失败',
+      revokeRejectedByContract: '合约拒绝清除授权。',
+      verifyingRevocation: '核验授权状态…',
+      recheckRevocation: '重新核验',
+      revokeStatuses: {
+        'still-active': '交易已确认，授权仍然有效。',
+        unverified: '交易已确认，暂时无法读取授权状态。',
+        'receipt-unavailable': '暂时无法确认交易状态。',
+        replaced: '撤销交易已被替换或取消。',
+        reverted: '撤销交易执行失败。',
+      },
       riskAnalyzing: '分析中…',
       riskUnavailableBadge: '无法验证',
       riskMalicious: '⚠ 已知恶意',
@@ -180,7 +190,8 @@ export const messages = {
       type: '类型',
       value: '值',
       rawCalldata: '原始 calldata',
-      unlimited: (type: string) => `无限（max ${type}）`,
+      maxUintValue: (type: string) => `${type} 最大值`,
+      ifErc20: (label: string) => `若为 ERC-20，表示${label}`,
       knownExplains: {
         approve: 'approve(address,uint256) 可能是 ERC-20 额度授权，也可能是 ERC-721 单件 NFT 授权；仅凭 calldata 无法确认目标合约类型。请核对被授权地址和目标合约。',
         approveZeroAmbiguous: '第二个参数为 0：对 ERC-20 可能是清零额度，对 ERC-721 则可能是授权 tokenId 0。未确认目标合约类型前，不能断言是撤销。',
@@ -276,9 +287,10 @@ export const messages = {
           info: '提示',
         },
         riskTitles: {
-          'erc20-max-allowance': 'approve 参数为 uint 最大值（需确认合约类型）',
+          'erc20-max-allowance': '最大额度（若为 ERC-20）',
+          'erc20-large-allowance': '大额授权（若为 ERC-20）',
           'erc20-increase-allowance': '增加 spender 额度',
-          'nft-approval-for-all': 'NFT 全集合授权',
+          'nft-approval-for-all': '整集合授权',
           'erc20-permit': 'ERC-20 permit 离线授权',
           'permit2-permit': 'Permit2 花费授权',
           'transfer-from': 'transferFrom 转出资产',
@@ -298,6 +310,8 @@ export const messages = {
         riskExplains: {
           'erc20-max-allowance':
             '如果目标是 ERC-20，uint 最大值通常等效于无限额度授权；ERC-721 的相同选择器表示单件 NFT 授权。请核实目标合约类型和被授权地址。',
+          'erc20-large-allowance':
+            '如果目标是 ERC-20，此参数表示一个很大的有限额度。如果目标是 ERC-721，此参数是单件 NFT 的 token ID。',
           'erc20-increase-allowance':
             '该调用会增加 spender 的可花费额度，请确认额度变化符合预期。',
           'nft-approval-for-all':
@@ -416,6 +430,7 @@ export const messages = {
     },
   },
   en: {
+    approvalScope: { max: 'Maximum allowance', large: 'Large allowance', collection: 'Whole-collection approval' },
     common: {
       backHome: 'Back home',
       articles: 'Articles',
@@ -507,7 +522,7 @@ export const messages = {
       filterLabel: 'Filter approvals',
       filterAll: 'All',
       filterAttention: 'Needs attention (including unverified)',
-      filterUnlimited: 'Unlimited / entire collection',
+      filterBroad: 'Maximum, large, or whole-collection approvals',
       sortLabel: 'Sort by',
       sortRisk: 'Risk first',
       sortExposure: 'Estimated USD exposure',
@@ -526,16 +541,15 @@ export const messages = {
       readonlyNotice: '🔒 Reads do not submit transactions. Revokes are signed in your wallet; this site never handles private keys.',
       nftCollection: 'NFT collection',
       nftToken: 'Single NFT',
-      allNfts: 'All NFTs',
       upstreamUnknown: 'Underlying ERC-20 allowance unavailable; spendable amount unknown',
       upstreamZero: 'Underlying ERC-20 allowance is zero; internal permission remains',
       upstreamLimited: 'Spendable amount is capped by the underlying ERC-20 allowance',
-      unlimited: 'Unlimited',
       permanent: 'Permanent',
       expires: (date: string) => `Expires ${date}`,
       exposure: 'Exposure',
       unknown: 'Unknown',
       revoked: 'Revoked',
+      revokedNotice: (symbol: string) => `Verified that the ${symbol} approval was revoked.`,
       revoke: 'Revoke',
       revokeTitle: 'Revoke this approval',
       revokeDisabledTitle: 'Connect this address to revoke',
@@ -547,6 +561,16 @@ export const messages = {
       cancelled: 'Cancelled',
       walletUnavailable: 'The wallet or target-chain RPC is unavailable',
       revokeFailed: 'Failed to prepare the revoke transaction',
+      revokeRejectedByContract: 'The contract rejected the approval change.',
+      verifyingRevocation: 'Checking onchain approval…',
+      recheckRevocation: 'Check again',
+      revokeStatuses: {
+        'still-active': 'The transaction was confirmed and the approval is still active.',
+        unverified: 'The transaction was confirmed, but the approval could not be read.',
+        'receipt-unavailable': 'The transaction status is temporarily unavailable.',
+        replaced: 'The revoke transaction was replaced or cancelled.',
+        reverted: 'The revoke transaction reverted.',
+      },
       riskAnalyzing: 'Analyzing…',
       riskUnavailableBadge: 'Unverified',
       riskMalicious: '⚠ Known malicious',
@@ -597,7 +621,8 @@ export const messages = {
       type: 'Type',
       value: 'Value',
       rawCalldata: 'Raw calldata',
-      unlimited: (type: string) => `Unlimited (max ${type})`,
+      maxUintValue: (type: string) => `${type} maximum value`,
+      ifErc20: (label: string) => `${label} for an ERC-20 target`,
       knownExplains: {
         approve: 'approve(address,uint256) can be an ERC-20 allowance or a single-token ERC-721 approval. Calldata alone cannot establish the target contract type; verify the target and approved address.',
         approveZeroAmbiguous: 'The second argument is 0: this may clear an ERC-20 allowance, or approve ERC-721 tokenId 0. Do not call it a revocation without verifying the target contract type.',
@@ -694,9 +719,10 @@ export const messages = {
           info: 'Info',
         },
         riskTitles: {
-          'erc20-max-allowance': 'approve uses uint max (verify contract type)',
+          'erc20-max-allowance': 'Maximum allowance (if ERC-20)',
+          'erc20-large-allowance': 'Large allowance (if ERC-20)',
           'erc20-increase-allowance': 'Spender allowance increase',
-          'nft-approval-for-all': 'Whole-collection NFT approval',
+          'nft-approval-for-all': 'Whole-collection approval',
           'erc20-permit': 'ERC-20 permit approval',
           'permit2-permit': 'Permit2 spending approval',
           'transfer-from': 'transferFrom moves assets',
@@ -716,6 +742,8 @@ export const messages = {
         riskExplains: {
           'erc20-max-allowance':
             'If the target is ERC-20, uint max is usually an unlimited allowance. The same selector on ERC-721 approves one NFT. Verify the target contract type and approved address.',
+          'erc20-large-allowance':
+            'For an ERC-20 target, this is a large finite allowance. For an ERC-721 target, this parameter is the ID of a single NFT.',
           'erc20-increase-allowance':
             'This call increases the amount the spender may use. Confirm the change matches your expectation.',
           'nft-approval-for-all':

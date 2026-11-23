@@ -2,8 +2,9 @@
 
 import type { Address } from 'viem';
 import type { Approval } from './types';
+import { getApprovalScope } from './approvalScope';
 import type { SpenderRisk } from './useSpenderRisk';
-import { useRevokeApproval } from './useRevokeApproval';
+import { useRevokeApproval, type VerifiedRevocation } from './useRevokeApproval';
 import {
   explorerAddressUrl,
   explorerTxUrl,
@@ -20,6 +21,7 @@ interface ApprovalRowProps {
   usdPrice?: number;
   risk?: SpenderRisk;
   riskUnavailable?: boolean;
+  onRevoked: (revocation: VerifiedRevocation) => void;
 }
 
 export function ApprovalRow({
@@ -31,6 +33,7 @@ export function ApprovalRow({
   usdPrice,
   risk,
   riskUnavailable = false,
+  onRevoked,
 }: ApprovalRowProps) {
   const { locale, t } = useI18n();
   const transaction = useRevokeApproval({
@@ -38,7 +41,14 @@ export function ApprovalRow({
     canRevoke,
     chainId,
     walletChainId,
+    onRevoked,
   });
+  const needsCheck = transaction.status === 'unverified' || transaction.status === 'receipt-unavailable';
+  const scope = getApprovalScope(approval);
+  const confirmationMessage = transaction.status === 'still-active' || transaction.status === 'unverified' ||
+    transaction.status === 'receipt-unavailable' || transaction.status === 'replaced' || transaction.status === 'reverted'
+    ? t.approvals.revokeStatuses[transaction.status]
+    : undefined;
   const cellClass = 'block px-0 py-2 md:table-cell md:px-4 md:py-3';
 
   return (
@@ -88,13 +98,18 @@ export function ApprovalRow({
       <td className={`${cellClass} md:text-right`}>
         <MobileLabel>{t.approvals.allowance}</MobileLabel>
         {approval.kind === 'nft' ? (
-          <span className="badge badge-error badge-sm">{t.approvals.allNfts}</span>
+          <span className="badge badge-error badge-sm">{t.approvalScope.collection}</span>
         ) : approval.kind === 'nft-token' ? (
           <span className="font-mono text-sm">#{approval.tokenId}</span>
-        ) : approval.unlimited ? (
-          <span className="badge badge-error badge-sm">{t.approvals.unlimited}</span>
         ) : (
-          <span className="font-mono text-sm">{approval.amountText}</span>
+          <>
+            {scope !== 'max' && <span className="block break-all font-mono text-sm">{approval.amountText}</span>}
+            {(scope === 'max' || scope === 'large') && (
+              <span className={`badge badge-sm ${scope === 'max' ? 'badge-error' : 'badge-warning'}`}>
+                {t.approvalScope[scope]}
+              </span>
+            )}
+          </>
         )}
         {approval.kind === 'permit2' && (
           <div className="text-xs text-base-content/70">
@@ -116,17 +131,17 @@ export function ApprovalRow({
       </td>
       <td className={`${cellClass} md:text-right`} aria-live="polite">
         <MobileLabel>{t.approvals.action}</MobileLabel>
-        {transaction.isSuccess ? (
+        {transaction.status === 'revoked' ? (
           <span className="text-sm text-success">{t.approvals.revoked}</span>
         ) : (
           <button
             type="button"
             className="btn btn-error btn-sm md:btn-xs"
-            disabled={!canRevoke || transaction.busy}
+            disabled={(!canRevoke && !needsCheck) || transaction.busy}
             aria-busy={transaction.busy}
-            onClick={() => void transaction.revoke(approval)}
+            onClick={() => void (needsCheck ? transaction.retryCheck() : transaction.revoke(approval))}
             title={
-              canRevoke
+              needsCheck ? t.approvals.recheckRevocation : canRevoke
                 ? t.approvals.revokeTitle
                 : t.approvals.revokeDisabledTitle
             }
@@ -135,11 +150,15 @@ export function ApprovalRow({
               ? t.approvals.switching
               : transaction.isAwaitingWallet
                 ? t.approvals.walletConfirming
-                : transaction.isConfirming
+                : transaction.status === 'confirming'
                   ? t.approvals.chainConfirming
-                  : walletChainId !== chainId && canRevoke
-                    ? t.approvals.switchAndRevoke(getTxRayChain(chainId).name)
-                    : t.approvals.revoke}
+                  : transaction.status === 'verifying'
+                    ? t.approvals.verifyingRevocation
+                    : needsCheck
+                      ? t.approvals.recheckRevocation
+                      : walletChainId !== chainId && canRevoke
+                        ? t.approvals.switchAndRevoke(getTxRayChain(chainId).name)
+                        : t.approvals.revoke}
           </button>
         )}
         {transaction.hash && (
@@ -158,6 +177,9 @@ export function ApprovalRow({
           <div className="mt-1 text-xs text-error" role="alert">
             {shortError(transaction.error, t.approvals)}
           </div>
+        )}
+        {confirmationMessage && (
+          <div className="mt-1 text-xs text-warning" role="status">{confirmationMessage}</div>
         )}
       </td>
     </tr>
@@ -304,5 +326,6 @@ function shortError(
     return messages.walletUnavailable;
   }
   if (error.message === '撤销交易准备失败') return messages.revokeFailed;
+  if (error.message === '合约拒绝清除授权') return messages.revokeRejectedByContract;
   return error.message.split('\n')[0].slice(0, 60);
 }

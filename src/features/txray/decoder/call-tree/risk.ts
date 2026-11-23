@@ -1,5 +1,6 @@
 import { PERMIT2_ADDRESS, PERMIT2_FIELD_PROFILES, PERMIT2_PERMIT_ABIS } from './abis';
 import { toFunctionSelector } from 'viem';
+import { classifyApprovalAmount } from '@/lib/web3/approvalAmount';
 import type {
   CallNode,
   DecodeLimits,
@@ -66,14 +67,6 @@ function paramByName(
   return param ? { name: param.name ?? name, type: param.type, value: param.value } : null;
 }
 
-function isMaxWidthUint(type: string, value: string): boolean {
-  const match = /^uint(\d{1,3})$/.exec(type);
-  if (!match || !/^\d+$/.test(value)) return false;
-  const bits = Number(match[1]);
-  if (bits < 8 || bits > 256 || bits % 8 !== 0) return false;
-  return BigInt(value) === 2n ** BigInt(bits) - 1n;
-}
-
 /** uint 类型 deadline（秒）→ 毫秒 bigint；非法返回 null。 */
 function deadlineMs(value: string): bigint | null {
   if (!/^\d+$/.test(value)) return null;
@@ -123,13 +116,11 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
     const amount = paramByName(node, 'amountOrTokenId') ??
       paramByName(node, 'amount') ?? paramByName(node, 'value');
     const spender = paramByName(node, 'approvedOrSpender') ?? paramByName(node, 'spender');
-    if (amount && isMaxWidthUint(amount.type, amount.value)) {
-      results.push(
-        finding('erc20-max-allowance', 'high', node, {
-          spender: spender?.value ?? 'unknown',
-          amount: amount.value,
-        }),
-      );
+    if (amount?.type === 'uint256' && /^\d+$/.test(amount.value)) {
+      const scope = classifyApprovalAmount(BigInt(amount.value), 256);
+      const evidence = { spender: spender?.value ?? 'unknown', amount: amount.value };
+      if (scope === 'max') results.push(finding('erc20-max-allowance', 'high', node, evidence));
+      if (scope === 'large') results.push(finding('erc20-large-allowance', 'medium', node, evidence));
     }
   }
 

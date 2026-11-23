@@ -326,6 +326,8 @@ function ParamRow({
       ? getSpenderLabel(getAddress(param.value), chainId)
       : undefined;
   const isMaxUint = isMaxUintValue(param.type, param.value);
+  const scope = param.approvalAmountScope;
+  const amountLabel = scope === 'max' || scope === 'large' ? t.approvalScope[scope] : undefined;
 
   return (
     <tr className="block rounded-box border border-base-300 p-3 sm:table-row sm:border-0 sm:p-0">
@@ -350,9 +352,16 @@ function ParamRow({
             )}
             <AddressLink address={param.value} chainId={chainId} />
           </span>
+        ) : amountLabel ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`badge badge-sm ${scope === 'max' ? 'badge-error' : 'badge-warning'}`}>
+              {param.name === 'amountOrTokenId' ? t.decoder.ifErc20(amountLabel) : amountLabel}
+            </span>
+            <span className="break-all font-mono text-xs">{param.value}</span>
+          </div>
         ) : isMaxUint ? (
           <span className="badge badge-error badge-sm">
-            {t.decoder.unlimited(param.type)}
+            {t.decoder.maxUintValue(param.type)}
           </span>
         ) : (
           <span className="break-all font-mono text-xs">{param.value}</span>

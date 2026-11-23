@@ -18,12 +18,14 @@ import {
   DEFAULT_TXRAY_CHAIN_ID,
   TXRAY_CHAINS,
   getTxRayChain,
+  explorerTxUrl,
 } from '@/features/txray/chains/chains';
 import { useTokenPrices } from '@/features/txray/approvals/useTokenPrices';
 import { ApprovalRow } from '@/features/txray/approvals/ApprovalRow';
 import { AppearanceControls } from '@/components/AppearanceControls';
 import { useI18n } from '@/lib/i18n/provider';
 import type { ApprovalWarning } from '@/features/txray/approvals/types';
+import type { VerifiedRevocation } from '@/features/txray/approvals/useRevokeApproval';
 import {
   selectApprovals,
   type ApprovalFilter,
@@ -64,6 +66,7 @@ function ApprovalsContent() {
   const [selectedChainId, setSelectedChainId] = useState(DEFAULT_TXRAY_CHAIN_ID);
   const [filter, setFilter] = useState<ApprovalFilter>('all');
   const [sort, setSort] = useState<ApprovalSort>('risk');
+  const [lastRevocation, setLastRevocation] = useState<VerifiedRevocation>();
   const effectiveChainId = demoMode ? DEFAULT_TXRAY_CHAIN_ID : selectedChainId;
   const chain = getTxRayChain(effectiveChainId);
 
@@ -96,6 +99,8 @@ function ApprovalsContent() {
   const isError = demoMode ? false : approvalsQuery.isError;
   const coverage = demoMode ? undefined : approvalsQuery.data?.index.coverage;
   const continuation = approvalsQuery.continuation;
+  const verifiedRevocation = !demoMode && lastRevocation?.chainId === effectiveChainId &&
+    lastRevocation.owner.toLowerCase() === target?.toLowerCase() ? lastRevocation : undefined;
 
   // 唯一 spender 列表 → 风险画像
   const spenders = useMemo(
@@ -245,6 +250,13 @@ function ApprovalsContent() {
 
         {target && (
           <div className="mt-6">
+            {verifiedRevocation && (
+              <div className="alert alert-success mb-4 text-sm" role="status">
+                <span>{t.approvals.revokedNotice(verifiedRevocation.symbol)}</span>
+                <a className="link" href={explorerTxUrl(effectiveChainId, verifiedRevocation.hash)}
+                  target="_blank" rel="noopener noreferrer">{t.approvals.viewTransaction}</a>
+              </div>
+            )}
             {isLoading && (
               <div className="card bg-base-200" role="status">
                 <div className="card-body items-center gap-3 text-base-content/70">
@@ -419,7 +431,7 @@ function ApprovalsContent() {
                     >
                       <option value="all">{t.approvals.filterAll}</option>
                       <option value="attention">{t.approvals.filterAttention}</option>
-                      <option value="unlimited">{t.approvals.filterUnlimited}</option>
+                      <option value="broad">{t.approvals.filterBroad}</option>
                     </select>
                   </div>
                   <div className="form-control">
@@ -461,7 +473,7 @@ function ApprovalsContent() {
                     <tbody className="block space-y-3 p-3 md:table-row-group md:space-y-0 md:p-0">
                       {visibleApprovals.map((a) => (
                         <ApprovalRow
-                          key={a.id}
+                          key={`${effectiveChainId}:${target.toLowerCase()}:${a.id}`}
                           approval={a}
                           canRevoke={canRevoke}
                           chainId={effectiveChainId}
@@ -474,6 +486,7 @@ function ApprovalsContent() {
                               : tokenPriceResult?.prices[a.token.toLowerCase()]
                           }
                           risk={riskMap?.[a.spender.toLowerCase()]}
+                          onRevoked={setLastRevocation}
                         />
                       ))}
                     </tbody>

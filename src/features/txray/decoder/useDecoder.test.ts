@@ -12,6 +12,7 @@ describe('decodeInput', () => {
 
     expect(result.functionName).toBe('approve');
     expect(result.params).toHaveLength(2);
+    expect(result.params[1].approvalAmountScope).toBe('max');
     expect(result.params[0].value.toLowerCase()).toBe(
       '0xe592427a0aece92de3edee1f18e0157c05861564',
     );

@@ -37,7 +37,7 @@ TxRay 的核心是 **检测 + 解释**：
 
 - 通过服务端 Etherscan 索引器读取 ERC-20、ERC-721 和 Permit2 授权历史。每次扫描固定截止区块，可查看各类事件的区间覆盖，继续扫描达到分页预算的区间，或单独重试请求失败的区间。
 - 用分块的 viem multicall 校验当前授权额度，过滤已经失效的历史授权，避免大地址产生超大 RPC 请求。
-- 检测 ERC-20 无限授权。
+- 区分 ERC-20 和 Permit2 的类型最大额度与大额有限授权。
 - 检测 NFT `setApprovalForAll` 整集合授权和 ERC-721 单件 `Approval`；单件授权以当前 `ownerOf` / `getApproved` 校验，历史事件不直接当作现状。
 - 检查 Uniswap Permit2 内部授权，而不只看表层的 ERC-20 approve。
 - 支持 Ethereum、Base、Arbitrum、Optimism。
@@ -49,7 +49,7 @@ TxRay 的核心是 **检测 + 解释**：
   - 未知合约；
   - 链级隔离的已知合约标签；
   - Scam Sniffer 公开恶意地址情报（每日更新、公开数据约延迟 7 天）；不可用时明确降级，未知绝不等同于安全。
-- 通过已连接钱包撤销 ERC-20、NFT 和 Permit2 授权；写入前强制匹配目标链并执行合约 simulation。
+- 通过已连接钱包撤销 ERC-20、NFT 和 Permit2 授权。写入前匹配目标链并模拟合约调用，交易确认后在回执区块核验对应权限是否已经清除。
 - 演示模式：`/tools/txray/approvals?demo=1`。
 
 ### TxRay · 交易解码

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Address } from 'viem';
 import type { Approval } from './types';
+import { getApprovalScope } from './approvalScope';
 import type { SpenderRisk } from './useSpenderRisk';
 import { selectApprovals } from './viewOptions';
 
@@ -9,10 +10,10 @@ const known = '0x0000000000000000000000000000000000000002' as Address;
 const unknown = '0x0000000000000000000000000000000000000003' as Address;
 const malicious = '0x0000000000000000000000000000000000000004' as Address;
 
-function approval(id: string, spender: Address, unlimited: boolean, exposure?: string): Approval {
+function approval(id: string, spender: Address, allowance: bigint, exposure?: string): Approval {
   return {
     kind: 'erc20', id, token, spender, symbol: id, decimals: 18,
-    amountText: '100', atRiskAmountText: exposure, allowance: 100n, unlimited,
+    amountText: allowance.toString(), atRiskAmountText: exposure, allowance,
   };
 }
 
@@ -24,9 +25,9 @@ function risk(level: SpenderRisk['level']): SpenderRisk {
 }
 
 const approvals = [
-  approval('known', known, false, '100'),
-  approval('unknown', unknown, false),
-  approval('malicious', malicious, true, '1'),
+  approval('known', known, 100n, '100'),
+  approval('unknown', unknown, 100n),
+  approval('malicious', malicious, 2n ** 256n - 1n, '1'),
 ];
 const risks = {
   [known.toLowerCase()]: risk('known'),
@@ -52,12 +53,19 @@ describe('approval view options', () => {
     expect(approvals.map((a) => a.id)).toEqual(['known', 'unknown', 'malicious']);
   });
 
-  it('does not mislabel a single NFT approval as unlimited', () => {
+  it('keeps a single NFT out of the broad approvals filter', () => {
     const single: Approval = {
       kind: 'nft-token', id: 'single', token, spender: known,
       symbol: 'NFT', tokenId: '7',
     };
-    expect(selectApprovals([single], risks, undefined, 'unlimited', 'risk')).toEqual([]);
+    expect(selectApprovals([single], risks, undefined, 'broad', 'risk')).toEqual([]);
     expect(selectApprovals([single], risks, undefined, 'all', 'risk')).toEqual([single]);
+  });
+
+  it('distinguishes very large finite allowances from type maximums', () => {
+    const veryLarge = approval('large', known, 2n ** 256n - 2n);
+    expect(getApprovalScope(veryLarge)).toBe('large');
+    expect(getApprovalScope(approvals[2])).toBe('max');
+    expect(selectApprovals([veryLarge], risks, undefined, 'broad', 'risk')).toEqual([veryLarge]);
   });
 });

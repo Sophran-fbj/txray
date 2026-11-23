@@ -37,7 +37,7 @@ TxRay focuses on **detect + explain**:
 
 - Read ERC-20, ERC-721, and Permit2 approval history through a server-side Etherscan indexer. Each scan uses a fixed cutoff block and displays coverage for each event type. Users can resume ranges that reach the pagination budget and retry failed ranges individually.
 - Verify current allowances with chunked viem multicalls, filtering stale approvals without creating oversized RPC requests.
-- Detect unlimited ERC-20 allowances.
+- Distinguish maximum and large finite ERC-20 and Permit2 allowances.
 - Detect NFT `setApprovalForAll` collection-wide and ERC-721 token-specific approvals; verify the latter against current `ownerOf` / `getApproved` state rather than treating historical events as current.
 - Inspect Uniswap Permit2 internal allowances.
 - Support Ethereum, Base, Arbitrum, and Optimism.
@@ -49,7 +49,7 @@ TxRay focuses on **detect + explain**:
   - unknown contracts,
   - chain-scoped known-contract labels;
   - Scam Sniffer public malicious-address intelligence (updated daily with an approximately 7-day public-data delay); failures degrade explicitly, and unknown never means safe.
-- Revoke ERC-20, NFT, and Permit2 approvals after enforcing the target chain and simulating the write.
+- Revoke ERC-20, NFT, and Permit2 approvals after enforcing the target chain and simulating the write. Verify that the permission was cleared at the block recorded in the confirmed transaction receipt.
 - Demo mode: `/tools/txray/approvals?demo=1`.
 
 ### TxRay · Transaction Decoder

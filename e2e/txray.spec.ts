@@ -11,7 +11,7 @@ test('approval demo is usable and persists the English locale', async ({ page })
   await page.getByRole('button', { name: 'English' }).click();
   await expect(page.getByRole('heading', { name: 'Approval check' })).toBeVisible();
   await expect(page.getByText('3 active approvals')).toBeVisible();
-  await expect(page.getByText('Unlimited', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Maximum allowance', { exact: true })).toHaveCount(2);
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Approval check' })).toBeVisible();
@@ -52,7 +52,7 @@ test('decoder localizes and decodes known calldata without a wallet', async ({ p
   // 函数名同时出现在参数卡与调用树节点中，取第一个即可
   await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('⚠️ High risk', { exact: true })).toBeVisible();
-  await expect(page.getByText('Unlimited (max uint256)')).toBeVisible();
+  await expect(page.getByText('Maximum allowance for an ERC-20 target', { exact: true })).toBeVisible();
   await expect(page.getByText(/Calldata alone cannot establish the target contract type/)).toBeVisible();
 });
 

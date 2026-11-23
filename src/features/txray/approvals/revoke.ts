@@ -1,4 +1,4 @@
-import { erc20Abi, erc721Abi, zeroAddress, type Address } from 'viem';
+import { erc20Abi, erc721Abi, zeroAddress, type Address, type PublicClient } from 'viem';
 import type { Approval } from './useApprovals';
 import { PERMIT2_ADDRESS, permit2Abi } from './permit2';
 
@@ -71,4 +71,39 @@ export function createRevokeCall(approval: Approval): RevokeCall {
     functionName: 'approve',
     args: [approval.token, approval.spender, 0n, 0],
   };
+}
+
+export async function isApprovalCleared(
+  client: PublicClient,
+  owner: Address,
+  approval: Approval,
+  blockNumber: bigint,
+): Promise<boolean> {
+  const { token, spender } = approval;
+  switch (approval.kind) {
+    case 'erc20': {
+      const allowance = await client.readContract({
+        address: token, abi: erc20Abi, functionName: 'allowance', args: [owner, spender], blockNumber,
+      });
+      return allowance === 0n;
+    }
+    case 'nft': {
+      const approved = await client.readContract({
+        address: token, abi: erc721Abi, functionName: 'isApprovedForAll', args: [owner, spender], blockNumber,
+      });
+      return approved === false;
+    }
+    case 'nft-token': {
+      const approved = await client.readContract({
+        address: token, abi: erc721Abi, functionName: 'getApproved', args: [BigInt(approval.tokenId)], blockNumber,
+      });
+      return approved.toLowerCase() === zeroAddress;
+    }
+    case 'permit2': {
+      const [amount] = await client.readContract({
+        address: PERMIT2_ADDRESS, abi: permit2Abi, functionName: 'allowance', args: [owner, token, spender], blockNumber,
+      });
+      return amount === 0n;
+    }
+  }
 }
