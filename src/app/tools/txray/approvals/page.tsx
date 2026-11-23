@@ -94,6 +94,8 @@ function ApprovalsContent() {
   const approvals = scanResult?.approvals;
   const isLoading = demoMode ? false : approvalsQuery.isLoading;
   const isError = demoMode ? false : approvalsQuery.isError;
+  const coverage = demoMode ? undefined : approvalsQuery.data?.index.coverage;
+  const continuation = approvalsQuery.continuation;
 
   // 唯一 spender 列表 → 风险画像
   const spenders = useMemo(
@@ -280,6 +282,38 @@ function ApprovalsContent() {
                   </ul>
                 </div>
               </div>
+            )}
+
+            {coverage?.snapshotBlock !== undefined && coverage.ranges && (
+              <details className="mb-4 rounded-box border border-base-300 p-3 text-sm" open={coverage.status === 'partial'}>
+                <summary className="cursor-pointer font-medium">
+                  {t.approvals.scanCoverage(coverage.snapshotBlock.toLocaleString(locale))}
+                </summary>
+                <ul className="mt-2 divide-y divide-base-300">
+                  {coverage.ranges.map((range) => (
+                    <li key={`${range.source}:${range.fromBlock}:${range.toBlock}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+                      <span>
+                        {t.approvals.scanSources[range.source]} · {range.fromBlock.toLocaleString(locale)}–{range.toBlock.toLocaleString(locale)}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs text-base-content/70">{t.approvals.scanRangeStatuses[range.status]}</span>
+                        {(range.status === 'pending' || range.status === 'failed') && (
+                          <button type="button" className="btn btn-outline btn-xs" disabled={continuation.isPending}
+                            onClick={() => continuation.mutate(range)}>
+                            {range.status === 'failed' ? t.approvals.scanRetryRange : t.approvals.scanContinueRange}
+                          </button>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {continuation.isPending && <p className="mt-2 text-xs" role="status">{t.approvals.scanning}</p>}
+                {continuation.isError && <p className="mt-2 text-xs text-error" role="alert">{t.approvals.scanContinueFailed}</p>}
+                <button type="button" className="btn btn-ghost btn-xs mt-2" disabled={continuation.isPending}
+                  onClick={() => void approvalsQuery.restart()}>
+                  {t.approvals.scanRestart}
+                </button>
+              </details>
             )}
 
             {isRiskError && (
@@ -470,6 +504,8 @@ function formatApprovalWarning(
   switch (warning.code) {
     case 'index-truncated':
       return messages.warningIndexTruncated(warning.maxRecordsPerSource);
+    case 'index-ranges-incomplete':
+      return messages.warningIndexRanges;
     case 'current-reads-failed':
       return messages.warningCurrentReads(warning.count);
     case 'decimals-failed':

@@ -156,4 +156,75 @@ describe('API input boundaries', () => {
       error: { code: 'CONFIG_MISSING' },
     });
   });
+
+  it('pins all approval sources to one block and retries only the requested failed range', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-etherscan-key';
+    const owner = '0x0000000000000000000000000000000000000123';
+    const endpoint = `/api/approvals?owner=${owner}&chainId=1`;
+    const nftTopic = '0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31';
+    let nftAvailable = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const params = new URL(String(input)).searchParams;
+      if (params.get('action') === 'eth_blockNumber') return Response.json({ result: '0x20' });
+      expect(params.get('fromBlock')).toBe('0');
+      expect(params.get('toBlock')).toBe('32');
+      if (params.get('topic0') === nftTopic) {
+        if (!nftAvailable) return new Response(null, { status: 503 });
+        return Response.json({ status: '1', result: [{
+          address: owner,
+          topics: [nftTopic, `0x${'00'.repeat(12)}${owner.slice(2)}`, `0x${'00'.repeat(31)}01`],
+        }] });
+      }
+      return Response.json({ status: '0', message: 'No records found', result: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const initial = await getApprovals(request(endpoint, 'test-approval-resume'));
+    expect(initial.status).toBe(200);
+    await expect(initial.json()).resolves.toMatchObject({
+      coverage: {
+        status: 'partial', snapshotBlock: 32,
+        ranges: [
+          { source: 'erc20', status: 'complete' },
+          { source: 'nft', status: 'failed' },
+          { source: 'permit2Approval', status: 'complete' },
+          { source: 'permit2Permit', status: 'complete' },
+        ],
+      },
+    });
+    nftAvailable = true;
+    const resumed = await getApprovals(request(`${endpoint}&snapshot=32&range=nft:0:32`, 'test-approval-resume'));
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(resumed.headers.get('Cache-Control')).toBe('no-store');
+    await expect(resumed.json()).resolves.toMatchObject({
+      nft: [{ token: owner, spender: '0x0000000000000000000000000000000000000001' }],
+      coverage: { status: 'complete', snapshotBlock: 32, ranges: [
+        { source: 'nft', fromBlock: 0, toBlock: 32, status: 'complete' },
+      ] },
+    });
+  });
+
+  it('splits saturated ranges into two adjacent inclusive ranges', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-etherscan-key';
+    const owner = '0x0000000000000000000000000000000000000124';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const params = new URL(String(input)).searchParams;
+      expect(params.get('action')).toBe('getLogs');
+      expect(params.get('fromBlock')).toBe('20');
+      expect(params.get('toBlock')).toBe('40');
+      return Response.json({ status: '1', result: Array.from({ length: 1000 }, () => ({ address: owner, topics: [] })) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await getApprovals(request(
+      `/api/approvals?owner=${owner}&chainId=1&snapshot=40&range=nft:20:40`,
+      'test-approval-split',
+    ));
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+    await expect(response.json()).resolves.toMatchObject({ coverage: {
+      status: 'partial', snapshotBlock: 40, ranges: [
+        { source: 'nft', fromBlock: 20, toBlock: 30, status: 'pending' },
+        { source: 'nft', fromBlock: 31, toBlock: 40, status: 'pending' },
+      ],
+    } });
+  }, 10_000);
 });

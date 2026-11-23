@@ -59,6 +59,14 @@ export const messages = {
       queryFailed: '授权查询失败，请稍后重试。',
       queryFailedDetail: '如果问题持续存在，请检查所选网络和 RPC/Etherscan 服务状态。',
       partialTitle: '扫描结果不完整，不能据此判断该地址安全',
+      warningIndexRanges: '部分历史区块尚未查全。展开扫描范围可查看进度并继续查询。',
+      scanCoverage: (block: string) => `历史扫描范围 · 截至区块 ${block}`,
+      scanSources: { erc20: 'ERC-20 / ERC-721 单件授权', nft: 'NFT 集合授权', permit2Approval: 'Permit2 Approval', permit2Permit: 'Permit2 Permit' },
+      scanRangeStatuses: { complete: '已查完', pending: '待继续', failed: '查询失败', saturated: '单区块达到索引上限' },
+      scanRetryRange: '重试此区间',
+      scanContinueRange: '扫描此区间',
+      scanContinueFailed: '续扫暂时不可用。当前结果已保留，请稍后重试。',
+      scanRestart: '重新扫描',
       warningIndexTruncated: (max: number) =>
         `历史事件超过单类 ${max.toLocaleString()} 条，结果已截断。`,
       warningCurrentReads: (count: number) =>
@@ -468,6 +476,14 @@ export const messages = {
       queryFailed: 'Approval query failed. Please try again.',
       queryFailedDetail: 'If this continues, check the selected network and RPC/Etherscan status.',
       partialTitle: 'The scan is incomplete and cannot prove this address is safe',
+      warningIndexRanges: 'Some history is still missing. Open the scan coverage to see the remaining block ranges.',
+      scanCoverage: (block: string) => `History coverage through block ${block}`,
+      scanSources: { erc20: 'ERC-20 / ERC-721 token approvals', nft: 'NFT collection approvals', permit2Approval: 'Permit2 Approval', permit2Permit: 'Permit2 Permit' },
+      scanRangeStatuses: { complete: 'Scanned', pending: 'Ready to scan', failed: 'Query failed', saturated: 'Single-block index limit reached' },
+      scanRetryRange: 'Retry range',
+      scanContinueRange: 'Scan range',
+      scanContinueFailed: 'Could not continue the scan. Existing results are still available. Try again later.',
+      scanRestart: 'Start a new scan',
       warningIndexTruncated: (max: number) =>
         `An event category exceeded ${max.toLocaleString()} records and was truncated.`,
       warningCurrentReads: (count: number) =>

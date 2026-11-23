@@ -35,7 +35,7 @@ TxRay focuses on **detect + explain**:
 
 ### TxRay · Approval Check
 
-- Read ERC-20, ERC-721, and Permit2 approval history through a server-side Etherscan indexer route; explicitly mark results incomplete when the pagination budget is reached.
+- Read ERC-20, ERC-721, and Permit2 approval history through a server-side Etherscan indexer. Each scan uses a fixed cutoff block and displays coverage for each event type. Users can resume ranges that reach the pagination budget and retry failed ranges individually.
 - Verify current allowances with chunked viem multicalls, filtering stale approvals without creating oversized RPC requests.
 - Detect unlimited ERC-20 allowances.
 - Detect NFT `setApprovalForAll` collection-wide and ERC-721 token-specific approvals; verify the latter against current `ownerOf` / `getApproved` state rather than treating historical events as current.
@@ -171,7 +171,7 @@ Without Redis, the service falls back to process-local rate limits, request paci
 
 ## Known Limitations
 
-- Etherscan log scans are capped at 10,000 records per event class. Reaching the cap produces an explicit incomplete-scan warning and no "no active approvals found" conclusion.
+- TxRay reads up to 10,000 Etherscan logs per attempt for an event type and block range. Saturated ranges can be subdivided and resumed. A saturated single block retains its incomplete status. Pending or failed ranges produce an incomplete-scan warning.
 - Trusted spender labels currently apply only to Ethereum mainnet; other chains default to unknown.
 - One approval scan queries USD prices for at most 500 unique tokens, in server batches of up to 100. Over-budget, unpriced, or upstream-limited keyless tokens produce partial coverage and are never treated as zero risk.
 - Signature Risk validates declared field values and expands structures and arrays from EIP-712 `types`. Without a schema, it performs conservative field scanning and displays a limitation warning. Structural validation and pattern matching do not verify the receiving contract's actual semantics. A deadline that has passed does not prove the receiving contract will reject the signature, so it does not automatically lower the overall risk level.

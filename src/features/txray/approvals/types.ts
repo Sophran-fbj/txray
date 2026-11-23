@@ -1,4 +1,5 @@
 import type { Address } from 'viem';
+import type { ApprovalIndexPayload } from './approvalIndex';
 
 export interface FungibleApprovalDisplay {
   symbol: string;
@@ -45,11 +46,13 @@ export type Approval = Erc20Approval | NftApproval | NftTokenApproval | Permit2A
 
 export type ApprovalWarning =
   | { code: 'index-truncated'; maxRecordsPerSource: number }
+  | { code: 'index-ranges-incomplete' }
   | { code: 'current-reads-failed'; count: number }
   | { code: 'decimals-failed'; count: number }
   | { code: 'balances-failed'; count: number };
 
 export interface ApprovalScanResult {
+  index: ApprovalIndexPayload;
   approvals: Approval[];
   status: 'complete' | 'partial';
   warnings: ApprovalWarning[];

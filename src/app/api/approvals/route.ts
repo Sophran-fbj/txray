@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getAddress, isAddress, toEventSelector } from 'viem';
+import { getAddress, isAddress, toEventSelector, type Address } from 'viem';
 import {
   PERMIT2_ADDRESS,
   PERMIT2_APPROVAL_EVENT,
@@ -12,7 +12,16 @@ import {
   scheduleExternalRequest,
 } from '@/lib/server/requestGuard';
 import { isRecord } from '@/lib/validation';
-import { parseApprovalIndexPayload } from '@/features/txray/approvals/approvalIndex';
+import {
+  APPROVAL_SOURCES,
+  isApprovalSource,
+  isBlockNumber,
+  parseApprovalIndexPayload,
+  type ApprovalBlockRange,
+  type ApprovalIndexPayload,
+  type ApprovalPair,
+  type ApprovalRangeCoverage,
+} from '@/features/txray/approvals/approvalIndex';
 import { splitApprovalLogs } from '@/features/txray/approvals/approvalEvents';
 import { getSharedJson, setSharedJson } from '@/lib/server/sharedState';
 
@@ -22,6 +31,12 @@ const APPROVAL_FOR_ALL_TOPIC0 =
   '0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31';
 const PERMIT2_APPROVAL_TOPIC0 = toEventSelector(PERMIT2_APPROVAL_EVENT);
 const PERMIT2_PERMIT_TOPIC0 = toEventSelector(PERMIT2_PERMIT_EVENT);
+const EVENT_SOURCES = {
+  erc20: { topic: APPROVAL_TOPIC0 },
+  nft: { topic: APPROVAL_FOR_ALL_TOPIC0 },
+  permit2Approval: { topic: PERMIT2_APPROVAL_TOPIC0, contract: PERMIT2_ADDRESS },
+  permit2Permit: { topic: PERMIT2_PERMIT_TOPIC0, contract: PERMIT2_ADDRESS },
+} satisfies Record<(typeof APPROVAL_SOURCES)[number], { topic: string; contract?: Address }>;
 
 const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api';
 const PAGE_SIZE = 1000;
@@ -29,7 +44,7 @@ const MAX_PAGES_PER_SOURCE = 10;
 const UPSTREAM_TIMEOUT_MS = 12_000;
 const CACHE_TTL_MS = 60_000;
 const MAX_CACHE_ENTRIES = 2_000;
-const SHARED_CACHE_NAMESPACE = 'approval-scan-v2';
+const SHARED_CACHE_NAMESPACE = 'approval-scan-v3';
 const SHARED_CACHE_TTL_SECONDS = 60;
 
 interface EtherscanLog {
@@ -37,35 +52,18 @@ interface EtherscanLog {
   topics: string[];
 }
 
-interface Pair {
-  token: string;
-  spender: string;
-}
-
 interface LogPageResult {
   logs: EtherscanLog[];
-  truncated: boolean;
-}
-
-interface ApprovalIndexResponse {
-  erc20: Pair[];
-  nft: Pair[];
-  nftToken: { token: string; tokenId: string }[];
-  permit2: Pair[];
-  coverage: {
-    status: 'complete' | 'partial';
-    truncatedSources: string[];
-    maxRecordsPerSource: number;
-  };
+  ranges: ApprovalRangeCoverage[];
 }
 
 const responseCache = new Map<
   string,
-  { expiresAt: number; value: ApprovalIndexResponse }
+  { expiresAt: number; value: ApprovalIndexPayload }
 >();
-const inFlight = new Map<string, Promise<ApprovalIndexResponse>>();
+const inFlight = new Map<string, Promise<ApprovalIndexPayload>>();
 
-function cacheResponse(key: string, value: ApprovalIndexResponse): void {
+function cacheResponse(key: string, value: ApprovalIndexPayload): void {
   const now = Date.now();
   if (responseCache.size >= MAX_CACHE_ENTRIES) {
     for (const [cachedKey, cached] of responseCache) {
@@ -80,7 +78,7 @@ function cacheResponse(key: string, value: ApprovalIndexResponse): void {
   responseCache.set(key, { expiresAt: now + CACHE_TTL_MS, value });
 }
 
-function topicToAddress(topic: string): string {
+function topicToAddress(topic: string): Address {
   return getAddress(`0x${topic.slice(-40)}`);
 }
 
@@ -102,7 +100,7 @@ function upstreamMessage(value: unknown): string {
   return typeof json.message === 'string' ? json.message : '';
 }
 
-async function fetchLogPage(url: URL): Promise<EtherscanLog[]> {
+async function fetchEtherscan(url: URL): Promise<unknown> {
   const response = await scheduleExternalRequest(() =>
     fetch(url, {
       cache: 'no-store',
@@ -111,15 +109,34 @@ async function fetchLogPage(url: URL): Promise<EtherscanLog[]> {
   );
   if (!response.ok) throw new Error(`Etherscan HTTP ${response.status}`);
 
-  const json: unknown = await response.json();
+  return response.json();
+}
+
+async function fetchSnapshotBlock(chainId: number, apiKey: string): Promise<number> {
+  const url = new URL(ETHERSCAN_BASE);
+  url.searchParams.set('chainid', String(chainId));
+  url.searchParams.set('module', 'proxy');
+  url.searchParams.set('action', 'eth_blockNumber');
+  url.searchParams.set('apikey', apiKey);
+  const json = await fetchEtherscan(url);
+  if (isRecord(json) && typeof json.result === 'string' && /^0x[0-9a-f]+$/i.test(json.result)) {
+    const block = Number(json.result);
+    if (isBlockNumber(block)) return block;
+  }
+  throw new Error('Etherscan 未返回有效的截止区块');
+}
+
+async function fetchLogPage(url: URL): Promise<EtherscanLog[]> {
+  const json = await fetchEtherscan(url);
   if (isRecord(json)) {
     const result = json.result;
-    if (Array.isArray(result)) {
+    if (Array.isArray(result) && json.status === '1') {
       if (!result.every(isEtherscanLog)) {
         throw new Error('Etherscan 返回了无效日志数据');
       }
       return result;
     }
+    if (Array.isArray(result) && result.length === 0 && json.message === 'No records found') return [];
   }
 
   const message = upstreamMessage(json);
@@ -129,38 +146,52 @@ async function fetchLogPage(url: URL): Promise<EtherscanLog[]> {
 
 async function fetchAllLogs(
   chainId: number,
-  topic0: string,
+  range: ApprovalBlockRange,
   ownerTopic: string,
   apiKey: string,
-  contractAddress?: string,
 ): Promise<LogPageResult> {
   const logs: EtherscanLog[] = [];
+  const source: { topic: string; contract?: Address } = EVENT_SOURCES[range.source];
 
   for (let page = 1; page <= MAX_PAGES_PER_SOURCE; page += 1) {
     const url = new URL(ETHERSCAN_BASE);
     url.searchParams.set('chainid', String(chainId));
     url.searchParams.set('module', 'logs');
     url.searchParams.set('action', 'getLogs');
-    if (contractAddress) url.searchParams.set('address', contractAddress);
-    url.searchParams.set('topic0', topic0);
+    if (source.contract) url.searchParams.set('address', source.contract);
+    url.searchParams.set('topic0', source.topic);
     url.searchParams.set('topic1', ownerTopic);
     url.searchParams.set('topic0_1_opr', 'and');
-    url.searchParams.set('fromBlock', '0');
-    url.searchParams.set('toBlock', 'latest');
+    url.searchParams.set('fromBlock', String(range.fromBlock));
+    url.searchParams.set('toBlock', String(range.toBlock));
     url.searchParams.set('page', String(page));
     url.searchParams.set('offset', String(PAGE_SIZE));
     url.searchParams.set('apikey', apiKey);
 
-    const pageLogs = await fetchLogPage(url);
-    logs.push(...pageLogs);
-    if (pageLogs.length < PAGE_SIZE) return { logs, truncated: false };
+    try {
+      const pageLogs = await fetchLogPage(url);
+      logs.push(...pageLogs);
+      if (pageLogs.length < PAGE_SIZE) return { logs, ranges: [{ ...range, status: 'complete' }] };
+    } catch {
+      return { logs, ranges: [{ ...range, status: 'failed' }] };
+    }
   }
 
-  return { logs, truncated: true };
+  if (range.fromBlock === range.toBlock) {
+    return { logs, ranges: [{ ...range, status: 'saturated' }] };
+  }
+  const middle = range.fromBlock + Math.floor((range.toBlock - range.fromBlock) / 2);
+  return {
+    logs,
+    ranges: [
+      { ...range, toBlock: middle, status: 'pending' },
+      { ...range, fromBlock: middle + 1, status: 'pending' },
+    ],
+  };
 }
 
-function dedupeSpenderPairs(logs: EtherscanLog[]): Pair[] {
-  const pairs = new Map<string, Pair>();
+function dedupeSpenderPairs(logs: EtherscanLog[]): ApprovalPair[] {
+  const pairs = new Map<string, ApprovalPair>();
   for (const log of logs) {
     const spenderTopic = log.topics[2];
     if (!spenderTopic) continue;
@@ -175,8 +206,8 @@ function dedupeSpenderPairs(logs: EtherscanLog[]): Pair[] {
   return [...pairs.values()];
 }
 
-function dedupePermit2Pairs(logs: EtherscanLog[]): Pair[] {
-  const pairs = new Map<string, Pair>();
+function dedupePermit2Pairs(logs: EtherscanLog[]): ApprovalPair[] {
+  const pairs = new Map<string, ApprovalPair>();
   for (const log of logs) {
     const tokenTopic = log.topics[2];
     const spenderTopic = log.topics[3];
@@ -196,46 +227,62 @@ async function scanApprovals(
   owner: string,
   chainId: number,
   apiKey: string,
-): Promise<ApprovalIndexResponse> {
+  snapshotBlock: number,
+  requested: ApprovalBlockRange[] = APPROVAL_SOURCES.map((source) => ({ source, fromBlock: 0, toBlock: snapshotBlock })),
+): Promise<ApprovalIndexPayload> {
   const ownerTopic = `0x${owner.slice(2).toLowerCase().padStart(64, '0')}`;
-  const sources = [
-    ['erc20', APPROVAL_TOPIC0, undefined],
-    ['nft', APPROVAL_FOR_ALL_TOPIC0, undefined],
-    ['permit2Approval', PERMIT2_APPROVAL_TOPIC0, PERMIT2_ADDRESS],
-    ['permit2Permit', PERMIT2_PERMIT_TOPIC0, PERMIT2_ADDRESS],
-  ] as const;
-
-  const results: Record<(typeof sources)[number][0], LogPageResult> = {
-    erc20: { logs: [], truncated: false },
-    nft: { logs: [], truncated: false },
-    permit2Approval: { logs: [], truncated: false },
-    permit2Permit: { logs: [], truncated: false },
+  const logs: Record<ApprovalBlockRange['source'], EtherscanLog[]> = {
+    erc20: [], nft: [], permit2Approval: [], permit2Permit: [],
   };
+  const ranges: ApprovalRangeCoverage[] = [];
 
   // Sequential requests avoid bursting through Etherscan's per-key rate limit.
-  for (const [name, topic, contract] of sources) {
-    results[name] = await fetchAllLogs(chainId, topic, ownerTopic, apiKey, contract);
+  for (const range of requested) {
+    const result = await fetchAllLogs(chainId, range, ownerTopic, apiKey);
+    logs[range.source] = result.logs;
+    ranges.push(...result.ranges);
   }
 
-  const truncatedSources = sources
-    .filter(([name]) => results[name].truncated)
-    .map(([name]) => name);
-  const approvalEvents = splitApprovalLogs(results.erc20.logs);
+  const truncatedSources = [...new Set(ranges
+    .filter((range) => range.status === 'pending' || range.status === 'saturated')
+    .map((range) => range.source))];
+  const approvalEvents = splitApprovalLogs(logs.erc20);
 
   return {
     erc20: approvalEvents.erc20,
-    nft: dedupeSpenderPairs(results.nft.logs),
+    nft: dedupeSpenderPairs(logs.nft),
     nftToken: approvalEvents.nftToken,
     permit2: dedupePermit2Pairs([
-      ...results.permit2Approval.logs,
-      ...results.permit2Permit.logs,
+      ...logs.permit2Approval,
+      ...logs.permit2Permit,
     ]),
     coverage: {
-      status: truncatedSources.length ? 'partial' : 'complete',
+      status: ranges.every((range) => range.status === 'complete') ? 'complete' : 'partial',
       truncatedSources,
       maxRecordsPerSource: PAGE_SIZE * MAX_PAGES_PER_SOURCE,
+      snapshotBlock,
+      ranges,
     },
   };
+}
+
+function parseContinuation(params: URLSearchParams) {
+  const rangeParam = params.get('range');
+  const snapshotParam = params.get('snapshot');
+  if (rangeParam === null && snapshotParam === null) return undefined;
+  const [source, from, to, extra] = rangeParam?.split(':') ?? [];
+  const snapshotBlock = parseBlockParam(snapshotParam);
+  const fromBlock = parseBlockParam(from);
+  const toBlock = parseBlockParam(to);
+  if (extra !== undefined || !isApprovalSource(source) || snapshotBlock === undefined ||
+    fromBlock === undefined || toBlock === undefined || fromBlock > toBlock || toBlock > snapshotBlock) return null;
+  return { snapshotBlock, range: { source, fromBlock, toBlock } };
+}
+
+function parseBlockParam(value: string | null | undefined): number | undefined {
+  if (!value || !/^\d{1,16}$/.test(value)) return undefined;
+  const number = Number(value);
+  return isBlockNumber(number) ? number : undefined;
 }
 
 export async function GET(request: NextRequest) {
@@ -272,6 +319,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const continuation = parseContinuation(request.nextUrl.searchParams);
+  if (continuation === null) {
+    return NextResponse.json(
+      { error: { code: 'INVALID_SCAN_RANGE', message: '无效的授权续扫区块范围' } },
+      { status: 400 },
+    );
+  }
+
   const apiKey = process.env.ETHERSCAN_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -281,6 +336,12 @@ export async function GET(request: NextRequest) {
   }
 
   const owner = getAddress(ownerParam);
+  if (continuation) {
+    const value = await scanApprovals(owner, chainId, apiKey, continuation.snapshotBlock, [continuation.range]);
+    return NextResponse.json(value, {
+      headers: { 'Cache-Control': 'no-store', 'X-TxRay-Guard': rateLimit.backend },
+    });
+  }
   const cacheKey = `${chainId}:${owner.toLowerCase()}`;
   const cached = responseCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -319,10 +380,15 @@ export async function GET(request: NextRequest) {
   try {
     let pending = inFlight.get(cacheKey);
     if (!pending) {
-      pending = scanApprovals(owner, chainId, apiKey);
+      pending = fetchSnapshotBlock(chainId, apiKey).then((block) => scanApprovals(owner, chainId, apiKey, block));
       inFlight.set(cacheKey, pending);
     }
     const value = await pending;
+    if (value.coverage.status === 'partial') {
+      return NextResponse.json(value, {
+        headers: { 'Cache-Control': 'no-store', 'X-TxRay-Cache': sharedCacheStatus, 'X-TxRay-Guard': rateLimit.backend },
+      });
+    }
     cacheResponse(cacheKey, value);
     try {
       await setSharedJson(
@@ -346,7 +412,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '上游查询失败';
-    console.error('[approvals] upstream scan failed', { chainId, owner, message });
+    console.error('[approvals] upstream scan failed', { chainId, message });
     return NextResponse.json(
       { error: { code: 'UPSTREAM_FAILED', message: '授权索引服务暂时不可用，请稍后重试' } },
       { status: 502 },
