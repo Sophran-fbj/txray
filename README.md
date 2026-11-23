@@ -55,7 +55,7 @@ TxRay 的核心是 **检测 + 解释**：
 ### TxRay · 交易解码
 
 - 直接解码 calldata。
-- 在选定的 Ethereum、Base、Arbitrum 或 Optimism 网络通过交易 hash 拉取 transaction input 并解码。
+- 在选定的 Ethereum、Base、Arbitrum 或 Optimism 网络通过交易哈希读取交易输入和回执。页面展示外层交易状态以及回执中可识别的 ERC-20、ERC-721 转账与授权和 NFT 集合授权事件，空 calldata 的交易也可查看回执。
 - 识别 `approve`、`setApprovalForAll`、`permit`、`transferFrom`、`transfer` 等常见选择器。
 - 递归展开 Multicall3、`multicall(bytes[])`、Safe `execTransaction`、智能账户 `execute/executeBatch` 和 ERC-4337 `handleOps`，并把风险定位到具体调用路径。
 - 对递归深度、节点数和原始数据预览设置硬上限；未知、截断和解析不完整的路径默认展开，不会被描述为安全。

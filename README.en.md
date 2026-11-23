@@ -55,7 +55,7 @@ TxRay focuses on **detect + explain**:
 ### TxRay · Transaction Decoder
 
 - Decode calldata directly.
-- Fetch and decode transaction input on the selected Ethereum, Base, Arbitrum, or Optimism network.
+- Fetch transaction input and receipts on the selected Ethereum, Base, Arbitrum, or Optimism network. Show the outer transaction status and recognizable ERC-20, ERC-721, and collection approval receipt events, including for empty calldata.
 - Recognize common selectors such as `approve`, `setApprovalForAll`, `permit`, `transferFrom`, and `transfer`.
 - Recursively expand Multicall3, `multicall(bytes[])`, Safe `execTransaction`, smart-account `execute/executeBatch`, and ERC-4337 `handleOps`, attaching findings to concrete call paths.
 - Enforce hard limits on recursion depth, node count, and raw-data previews; unknown, truncated, and incomplete paths expand by default and are never described as safe.

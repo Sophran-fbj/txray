@@ -9,6 +9,7 @@ import {
   type Hash,
   type Hex,
   type PublicClient,
+  type Transaction,
 } from 'viem';
 import {
   KNOWN_SIGNATURES,
@@ -43,10 +44,11 @@ export interface DecodedResult {
 
 type SignatureLookup = (selector: string) => Promise<string | null>;
 export type DecoderInputMode = 'tx' | 'calldata';
+export type DecoderTransaction = Pick<Transaction, 'hash' | 'from' | 'to' | 'input' | 'value' | 'blockNumber'>;
 
 export class NoCalldataError extends Error {
   constructor() {
-    super('这是一笔普通转账（没有 calldata 可解码）');
+    super('这笔交易没有可解码的 calldata');
     this.name = 'NoCalldataError';
   }
 }
@@ -62,22 +64,35 @@ export function isCalldata(value: string): value is Hex {
 export function useDecoder(input: string, chainId = 1, mode?: DecoderInputMode) {
   const client = usePublicClient({ chainId });
   const value = input.trim();
-  const enabled = Boolean(client) && (mode === 'tx'
-    ? isTxHash(value)
-    : mode === 'calldata'
-      ? isCalldata(value)
-      : value.startsWith('0x') && value.length >= 10);
-
-  return useQuery<DecodedResult>({
-    queryKey: ['decode', chainId, mode ?? 'auto', value.toLowerCase()],
-    enabled,
+  const fromHash = mode === 'tx' || (mode === undefined && isTxHash(value));
+  const hash = fromHash && isTxHash(value) ? value : undefined;
+  const transactionQuery = useQuery<DecoderTransaction>({
+    queryKey: ['decode-transaction', chainId, hash?.toLowerCase()],
+    enabled: Boolean(client && hash),
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {
-      if (!client) throw new Error('目标链 RPC 不可用');
-      return decodeInput(client, value, fetchSignature, mode);
+      if (!client || !hash) throw new Error('目标链 RPC 或交易哈希不可用');
+      return client.getTransaction({ hash });
     },
   });
+
+  const transaction = transactionQuery.data;
+  const calldata = fromHash ? transaction?.input : value;
+  const callQuery = useQuery<DecodedResult>({
+    queryKey: ['decode', chainId, fromHash ? hash?.toLowerCase() : null, calldata?.toLowerCase()],
+    enabled: calldata !== undefined && isCalldata(calldata) && (!fromHash || Boolean(transaction?.to)),
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => {
+      if (!calldata || !isCalldata(calldata)) throw new Error('不是有效的 calldata');
+      return transaction
+        ? decodeCalldata(calldata, fetchSignature, transaction)
+        : decodeInput(undefined, calldata, fetchSignature, 'calldata');
+    },
+  });
+
+  return { transactionQuery, callQuery };
 }
 
 export async function decodeInput(
@@ -86,27 +101,23 @@ export async function decodeInput(
   lookupSignature: SignatureLookup = fetchSignature,
   mode?: DecoderInputMode,
 ): Promise<DecodedResult> {
-  let calldata: string;
-  let to: Address | undefined;
-  let source: 'calldata' | 'tx';
-  let txValue: bigint | null | undefined;
-
   if (mode === 'tx' || (!mode && isTxHash(value))) {
     if (!isTxHash(value)) throw new Error('不是有效的交易哈希');
     if (!client) throw new Error('读取交易 hash 需要目标链 RPC');
-    source = 'tx';
     const transaction = await client.getTransaction({ hash: value });
-    calldata = transaction.input;
-    to = transaction.to ?? undefined;
-    txValue = transaction.value ?? null;
-    if (!calldata || calldata === '0x') {
+    if (!transaction.input || transaction.input === '0x') {
       throw new NoCalldataError();
     }
-  } else {
-    source = 'calldata';
-    calldata = value;
+    return decodeCalldata(transaction.input, lookupSignature, transaction);
   }
+  return decodeCalldata(value, lookupSignature);
+}
 
+async function decodeCalldata(
+  calldata: string,
+  lookupSignature: SignatureLookup,
+  transaction?: Pick<DecoderTransaction, 'to' | 'value'>,
+): Promise<DecodedResult> {
   if (!isCalldata(calldata)) {
     throw new Error('不是有效的 calldata（应为 0x + 至少 4 字节方法选择器）');
   }
@@ -158,8 +169,8 @@ export async function decodeInput(
   }
 
   return {
-    source,
-    to,
+    source: transaction ? 'tx' : 'calldata',
+    to: transaction?.to ?? undefined,
     selector,
     signature,
     functionName,
@@ -167,7 +178,7 @@ export async function decodeInput(
     danger,
     explainKey,
     raw: calldata,
-    txValue,
+    txValue: transaction ? transaction.value ?? null : undefined,
   };
 }
 

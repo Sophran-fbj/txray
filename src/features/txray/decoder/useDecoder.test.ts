@@ -101,7 +101,7 @@ describe('decodeInput', () => {
     const hash =
       '0x2222222222222222222222222222222222222222222222222222222222222222';
     await expect(decodeInput(client, hash, vi.fn())).rejects.toThrow(
-      '普通转账',
+      '没有可解码的 calldata',
     );
   });
 });

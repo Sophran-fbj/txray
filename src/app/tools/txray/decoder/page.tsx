@@ -9,13 +9,13 @@ import {
   isMaxUintValue,
   isTxHash,
   isCalldata,
-  NoCalldataError,
   useDecoder,
   type DecoderInputMode,
   type DecodedParam,
   type DecodedResult,
 } from '@/features/txray/decoder/useDecoder';
 import CallTreeView, { useCallTree } from '@/features/txray/decoder/CallTreeView';
+import { TransactionExecutionView } from '@/features/txray/decoder/TransactionExecutionView';
 import { getSpenderLabel } from '@/features/txray/approvals/spenderLabels';
 import {
   DEFAULT_TXRAY_CHAIN_ID,
@@ -35,7 +35,9 @@ export default function DecoderPage() {
   const [calldataInput, setCalldataInput] = useState('');
   const [chainId, setChainId] = useState(DEFAULT_TXRAY_CHAIN_ID);
   const input = mode === 'tx' ? txInput : calldataInput;
-  const { data, isLoading, isError, error } = useDecoder(input, chainId, mode);
+  const { callQuery, transactionQuery } = useDecoder(input, chainId, mode);
+  const transaction = transactionQuery.data;
+  const data = callQuery.data;
   const value = input.trim();
   const inputValid = mode === 'tx' ? isTxHash(value) : isCalldata(value);
   const showResult = inputValid;
@@ -148,7 +150,13 @@ export default function DecoderPage() {
 
         {showResult && (
           <div className="mt-6" aria-live="polite">
-            {isLoading && (
+            {transaction && <TransactionExecutionView transaction={transaction} chainId={chainId} />}
+
+            {transaction?.to && !isCalldata(transaction.input) && (
+              <p className="text-sm text-base-content/70">{t.decoder.noCalldata}</p>
+            )}
+
+            {(transactionQuery.isLoading || callQuery.isLoading) && (
               <div className="card bg-base-200" role="status">
                 <div className="card-body items-center gap-3 text-base-content/70">
                   <span
@@ -160,14 +168,10 @@ export default function DecoderPage() {
               </div>
             )}
 
-            {isError && (
+            {(transactionQuery.isError || callQuery.isError) && (
               <div className="alert alert-error" role="alert">
                 <span className="text-sm">
-                  {error instanceof NoCalldataError
-                    ? t.decoder.noCalldata
-                    : mode === 'tx'
-                      ? t.decoder.txLookupFailed
-                      : t.decoder.calldataFailed}
+                  {transactionQuery.isError ? t.decoder.txLookupFailed : t.decoder.calldataFailed}
                 </span>
               </div>
             )}
@@ -244,26 +248,6 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
               </div>
             )}
           </div>
-
-          {data.to && (
-            <div>
-              <div className="text-xs text-base-content/70">
-                {t.decoder.targetContract}
-              </div>
-              <AddressLink address={data.to} chainId={chainId} />
-            </div>
-          )}
-
-          {data.txValue !== undefined && data.txValue !== null && data.txValue !== 0n && (
-            <div>
-              <div className="text-xs text-base-content/70">
-                {t.decoder.tree.value}
-              </div>
-              <div className="break-all font-mono text-xs">
-                {data.txValue.toString()} wei
-              </div>
-            </div>
-          )}
 
           {data.params.length > 0 && (
             <table className="table table-sm block sm:table">
