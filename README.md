@@ -54,8 +54,8 @@ TxRay 的核心是 **检测 + 解释**：
 
 ### TxRay · 交易解码
 
-- 直接解码 calldata，并支持 `?chain=&tx=` / `?chain=&calldata=&target=` URL 深链接分享。
-- 优先使用本地内置与容器/Permit2 ABI 进行离线解码；有目标地址时结合 Etherscan 已验证 ABI（含 EIP-1967 等常见代理合约的一跳实现地址解析与循环保护）增强根调用与接口识别。
+- 直接解码 calldata；支持通过显式“复制链接”生成 `?chain=&calldata=&target=`（或已打包交易 `?chain=&tx=`）分享链接，直接粘贴 calldata 时不会自动写入浏览器地址栏。
+- 优先使用本地内置与容器/Permit2 ABI 进行离线解码；查询未上链交易或手动给定目标地址时结合 Etherscan 已验证 ABI（含一跳代理实现地址解析与循环保护）增强根调用与接口识别，已确认的历史交易不会直接套用当前代理实现以避免升级后误判。
 - 在选定的 Ethereum、Base、Arbitrum 或 Optimism 网络通过交易哈希读取交易输入和回执。页面展示外层交易状态以及回执中可识别的 ERC-20、ERC-721 转账与授权和 NFT 集合授权事件，空 calldata 的交易也可查看回执。
 - 识别 `approve`、`setApprovalForAll`、`permit`、`transferFrom`、`transfer` 等常见选择器。
 - 递归展开 Multicall3、`multicall(bytes[])`、Safe `execTransaction` / `multiSend`、Uniswap Universal Router `execute(commands, inputs)`、智能账户 `execute/executeBatch` 和 ERC-4337 `handleOps`，并把风险定位到具体调用路径。

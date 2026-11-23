@@ -77,9 +77,11 @@ export function selectVerifiedFunction(functions: readonly AbiFunction[], select
 export function matchVerifiedCall(
   contractAbi: VerifiedAbiResult | undefined,
   selector: string,
+  options?: { allowProxyImplementation?: boolean },
 ): { abi: AbiFunction; functions: AbiFunction[]; viaProxyImplementation?: Address } | undefined {
   if (contractAbi?.status !== 'verified') return undefined;
-  if (contractAbi.implementation) {
+  const allowProxyImplementation = options?.allowProxyImplementation ?? true;
+  if (allowProxyImplementation && contractAbi.implementation) {
     const implMatch = selectVerifiedFunction(contractAbi.implementation.functions, selector);
     if (implMatch) {
       return {

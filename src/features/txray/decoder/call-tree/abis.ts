@@ -40,16 +40,23 @@ export const SAFE_MULTISEND_ADDRESSES: Record<string, string> = {
   '0x9641d764fc13c8b624c04430c7356c1c7c8102e2': 'Safe MultiSendCallOnly v1.4.1',
 };
 
-// Uniswap Universal Router 官方部署地址（Ethereum / Base / Arbitrum / Optimism）。
-export const UNIVERSAL_ROUTER_ADDRESSES: ReadonlySet<string> = new Set([
-  '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b',
-  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad',
-  '0x66a9893cc07d91d95644aedd05d03f95e1dba8af',
-  '0x6ff5693b99212da76ad316178a184ab56d299b43',
-  '0x5e325eda8064b456f4781070c0738d849c824258',
-  '0xa51afafe0263b40edaef0df8781ea9aa03e381a3',
-  '0x851116d9223fabed8e56c0e6b8ad0c31d98b3507',
-]);
+// Uniswap Universal Router 官方部署地址及对应版本（Ethereum / Base / Arbitrum / Optimism）。
+// 关键版本差异：0x10 在 v1/v1.2 为 Seaport NFT 指令，在 v2 起改为 V4_SWAP。
+export type UniversalRouterVersion = 'v1' | 'v1.2' | 'v2';
+
+export const UNIVERSAL_ROUTER_VERSIONS: Record<string, UniversalRouterVersion> = {
+  '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b': 'v1',
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': 'v1.2',
+  '0x5e325eda8064b456f4781070c0738d849c824258': 'v1.2',
+  '0x66a9893cc07d91d95644aedd05d03f95e1dba8af': 'v2',
+  '0x6ff5693b99212da76ad316178a184ab56d299b43': 'v2',
+  '0xa51afafe0263b40edaef0df8781ea9aa03e381a3': 'v2',
+  '0x851116d9223fabed8e56c0e6b8ad0c31d98b3507': 'v2',
+};
+
+export const UNIVERSAL_ROUTER_ADDRESSES: ReadonlySet<string> = new Set(
+  Object.keys(UNIVERSAL_ROUTER_VERSIONS),
+);
 
 // EntryPoint 官方地址 → 版本（eth-infinitism release notes，见文件头注释）。
 export const ENTRYPOINT_ADDRESSES: Record<string, string> = {
@@ -201,7 +208,8 @@ function urCommand(name: string, signature: string): UniversalRouterCommandDef {
 }
 
 // Uniswap Universal Router Commands.sol (commandId = byte & 0x3f; high bit 0x80 = FLAG_ALLOW_REVERT).
-export const UNIVERSAL_ROUTER_COMMANDS: Record<number, UniversalRouterCommandDef> = {
+// v1 / v1.2 / v2 共用的安全与交换指令表；仅 v2 新增且与旧版冲突的指令不跨版本套用。
+const UNIVERSAL_ROUTER_COMMON_COMMANDS: Record<number, UniversalRouterCommandDef> = {
   0x00: urCommand('V3_SWAP_EXACT_IN', 'address recipient, uint256 amountIn, uint256 amountOutMin, bytes path, bool payerIsUser'),
   0x01: urCommand('V3_SWAP_EXACT_OUT', 'address recipient, uint256 amountOut, uint256 amountInMax, bytes path, bool payerIsUser'),
   0x02: urCommand('PERMIT2_TRANSFER_FROM', 'address token, address recipient, uint160 amount'),
@@ -215,8 +223,21 @@ export const UNIVERSAL_ROUTER_COMMANDS: Record<number, UniversalRouterCommandDef
   0x0b: urCommand('WRAP_ETH', 'address recipient, uint256 amountMin'),
   0x0c: urCommand('UNWRAP_WETH', 'address recipient, uint256 amountMin'),
   0x0d: urCommand('PERMIT2_TRANSFER_FROM_BATCH', '(address from, address to, uint160 amount, address token)[] batchDetails'),
+};
+
+const UNIVERSAL_ROUTER_V2_ONLY_COMMANDS: Record<number, UniversalRouterCommandDef> = {
   0x10: urCommand('V4_SWAP', 'bytes actions, bytes[] params'),
 };
+
+export function getUniversalRouterCommand(
+  commandId: number,
+  version?: UniversalRouterVersion,
+): UniversalRouterCommandDef | undefined {
+  if (version === 'v2' && UNIVERSAL_ROUTER_V2_ONLY_COMMANDS[commandId]) {
+    return UNIVERSAL_ROUTER_V2_ONLY_COMMANDS[commandId];
+  }
+  return UNIVERSAL_ROUTER_COMMON_COMMANDS[commandId];
+}
 
 /** bytes 字段的摘要（keccak256），用于 signature 等超长字段的有界展示。 */
 export function keccakDigest(hex: `0x${string}`): string {

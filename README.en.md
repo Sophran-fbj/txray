@@ -54,8 +54,8 @@ TxRay focuses on **detect + explain**:
 
 ### TxRay · Transaction Decoder
 
-- Decode calldata directly with shareable URL deep-links (`?chain=&tx=` / `?chain=&calldata=&target=`).
-- Decode common container and Permit2 ABIs offline via built-in definitions; when a target address is available, fetch its Etherscan-verified ABI on the selected chain with 1-hop proxy implementation resolution and self-proxy loop protection, using ABI shapes to distinguish ERC-20 allowances from ERC-721 token IDs.
+- Decode calldata directly; shareable `?chain=&calldata=&target=` links (or `?chain=&tx=` for transaction hashes) are generated on explicit copy without automatically writing pasted calldata into browser history.
+- Decode common container and Permit2 ABIs offline via built-in definitions; when querying unmined transactions or supplied calldata targets, fetch Etherscan-verified ABI on the selected chain with 1-hop proxy implementation resolution and self-proxy loop protection (skipped for mined historical transactions to avoid post-upgrade misattribution).
 - Fetch transaction input and receipts on the selected Ethereum, Base, Arbitrum, or Optimism network. Show the outer transaction status and recognizable ERC-20, ERC-721, and collection approval receipt events, including for empty calldata.
 - Recognize common selectors such as `approve`, `setApprovalForAll`, `permit`, `transferFrom`, and `transfer`.
 - Recursively expand Multicall3, `multicall(bytes[])`, Safe `execTransaction` / `multiSend`, Uniswap Universal Router `execute(commands, inputs)`, smart-account `execute/executeBatch`, and ERC-4337 `handleOps`, attaching findings to concrete call paths.

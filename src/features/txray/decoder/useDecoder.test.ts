@@ -213,4 +213,43 @@ describe('verified target ABI', () => {
     expect(decoded.verifiedCall?.approvalInterface).toBe('erc20');
     expect(lookup).not.toHaveBeenCalled();
   });
+
+  it('skips the explorer current proxy implementation ABI for mined historical transactions', async () => {
+    const impl = '0x0000000000000000000000000000000000000099';
+    const proxyAbi = parseAbi(['function implementation() view returns (address)']);
+    const lookup = vi.fn();
+
+    const historical = await decodeCalldata(APPROVE_MAX, lookup, {
+      transaction: { value: 0n, blockNumber: 42n },
+      target,
+      contractAbi: {
+        status: 'verified',
+        functions: [...proxyAbi],
+        implementation: { address: impl, functions: [...erc20] },
+      },
+    });
+
+    expect(historical).toMatchObject({
+      signatureSource: 'local',
+      abiStatus: 'proxy-historical',
+    });
+    expect(historical.verifiedCall).toBeUndefined();
+    expect(lookup).not.toHaveBeenCalled();
+
+    const pending = await decodeCalldata(APPROVE_MAX, lookup, {
+      transaction: { value: 0n, blockNumber: null },
+      target,
+      contractAbi: {
+        status: 'verified',
+        functions: [...proxyAbi],
+        implementation: { address: impl, functions: [...erc20] },
+      },
+    });
+
+    expect(pending).toMatchObject({
+      signatureSource: 'verified',
+      abiStatus: 'matched',
+    });
+    expect(pending.verifiedCall?.viaProxyImplementation).toBe(impl);
+  });
 });

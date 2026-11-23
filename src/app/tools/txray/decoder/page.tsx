@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { getAddress, isAddress } from 'viem';
+import { getAddress, isAddress, type Address } from 'viem';
 import { AppShell } from '@/components/AppShell';
 import { CopyButton } from '@/components/CopyButton';
 import { WalletButton } from '@/components/WalletButton';
@@ -36,6 +36,35 @@ import {
 const LONG_VALUE_THRESHOLD = 160;
 const LONG_VALUE_PREVIEW = 120;
 const MAX_URL_CALLDATA_CHARS = 4096;
+
+function buildDecoderShareUrl(
+  origin: string,
+  pathname: string,
+  opts: {
+    activeCaseId?: string;
+    chainId: number;
+    mode: DecoderInputMode;
+    value: string;
+    targetAddress?: Address;
+  },
+): string {
+  const params = new URLSearchParams();
+  if (opts.activeCaseId) {
+    params.set('case', opts.activeCaseId);
+  } else {
+    if (opts.chainId !== DEFAULT_TXRAY_CHAIN_ID) {
+      params.set('chain', String(opts.chainId));
+    }
+    if (opts.mode === 'tx') {
+      params.set('tx', opts.value);
+    } else {
+      params.set('calldata', opts.value);
+      if (opts.targetAddress) params.set('target', opts.targetAddress);
+    }
+  }
+  const qs = params.toString();
+  return `${origin}${pathname}${qs ? `?${qs}` : ''}`;
+}
 
 export default function DecoderPage() {
   const { t } = useI18n();
@@ -119,13 +148,8 @@ function DecoderContent() {
       if (chainId !== DEFAULT_TXRAY_CHAIN_ID) {
         params.set('chain', String(chainId));
       }
-      if (shareableInUrl) {
-        if (mode === 'tx') {
-          params.set('tx', value);
-        } else {
-          params.set('calldata', value);
-          if (targetAddress) params.set('target', targetAddress);
-        }
+      if (mode === 'tx' && isTxHash(value)) {
+        params.set('tx', value);
       }
     }
     const qs = params.toString();
@@ -133,7 +157,7 @@ function DecoderContent() {
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
       window.history.replaceState(null, '', nextUrl);
     }
-  }, [activeDecoderCase, chainId, mode, shareableInUrl, value, targetAddress]);
+  }, [activeDecoderCase, chainId, mode, value]);
 
   return (
     <AppShell maxWidth="5xl" headerRight={<WalletButton />} footerNote={t.decoder.readonly}>
@@ -321,7 +345,15 @@ function DecoderContent() {
             </button>
             {shareableInUrl && (
               <CopyButton
-                value={() => window.location.href}
+                value={() =>
+                  buildDecoderShareUrl(window.location.origin, window.location.pathname, {
+                    activeCaseId: activeDecoderCase?.id,
+                    chainId,
+                    mode,
+                    value,
+                    targetAddress,
+                  })
+                }
                 text={t.common.copyLink}
                 copiedText={t.common.linkCopied}
                 className="ml-auto border border-base-300"

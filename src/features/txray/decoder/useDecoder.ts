@@ -44,7 +44,7 @@ export interface DecodedParam {
 export interface DecodedResult {
   source: 'calldata' | 'tx';
   signatureSource: 'verified' | 'local' | 'database' | 'unknown';
-  abiStatus?: 'matched' | 'no-match' | 'unverified' | 'unavailable';
+  abiStatus?: 'matched' | 'no-match' | 'unverified' | 'unavailable' | 'proxy-historical';
   verifiedCall?: VerifiedCall;
   to?: Address;
   selector: string;
@@ -95,10 +95,11 @@ export function useDecoder(input: string, chainId = 1, mode?: DecoderInputMode, 
   });
 
   const transaction = transactionQuery.data;
+  const isHistoricalTx = fromHash ? transaction?.blockNumber != null : false;
   const calldata = fromHash ? transaction?.input : value;
   const target = fromHash ? transaction?.to ?? undefined : calldataTarget;
   const callQuery = useQuery<DecodedResult>({
-    queryKey: ['decode', chainId, fromHash ? hash?.toLowerCase() : null, calldata?.toLowerCase(), target?.toLowerCase()],
+    queryKey: ['decode', chainId, fromHash ? hash?.toLowerCase() : null, isHistoricalTx, calldata?.toLowerCase(), target?.toLowerCase()],
     enabled: calldata !== undefined && isCalldata(calldata) && (!fromHash || Boolean(transaction?.to)),
     staleTime: 60_000,
     retry: false,
@@ -138,7 +139,11 @@ export async function decodeInput(
 export async function decodeCalldata(
   calldata: string,
   lookupSignature: SignatureLookup,
-  context?: { transaction?: Pick<DecoderTransaction, 'value'>; target?: Address; contractAbi?: VerifiedAbiResult },
+  context?: {
+    transaction?: Pick<DecoderTransaction, 'value'> & Partial<Pick<DecoderTransaction, 'blockNumber'>>;
+    target?: Address;
+    contractAbi?: VerifiedAbiResult;
+  },
 ): Promise<DecodedResult> {
   if (!isCalldata(calldata)) {
     throw new Error('不是有效的 calldata（应为 0x + 至少 4 字节方法选择器）');
@@ -146,7 +151,10 @@ export async function decodeCalldata(
 
   const selector = calldata.slice(0, 10).toLowerCase();
   const local = KNOWN_SIGNATURES[selector];
-  const verifiedMatch = matchVerifiedCall(context?.contractAbi, selector);
+  const isHistoricalTx = context?.transaction?.blockNumber != null;
+  const verifiedMatch = matchVerifiedCall(context?.contractAbi, selector, {
+    allowProxyImplementation: !isHistoricalTx,
+  });
   const verifiedParams = verifiedMatch && decodeParams(verifiedMatch.abi, calldata);
   const verifiedCall: VerifiedCall | undefined =
     verifiedMatch && verifiedParams
@@ -185,7 +193,15 @@ export async function decodeCalldata(
       : signature
         ? 'database'
         : 'unknown';
-  const abiStatus = verifiedCall ? 'matched' : context?.contractAbi?.status === 'verified' ? 'no-match' : context?.contractAbi?.status;
+  const abiStatus = verifiedCall
+    ? 'matched'
+    : isHistoricalTx &&
+        context?.contractAbi?.status === 'verified' &&
+        context.contractAbi.implementation
+      ? 'proxy-historical'
+      : context?.contractAbi?.status === 'verified'
+        ? 'no-match'
+        : context?.contractAbi?.status;
   const known = functionName && (!verifiedCall || !local || signature === toFunctionSignature(`function ${local.signature}`)) ? local : undefined;
 
   let danger: Danger = known?.danger ?? 'none';

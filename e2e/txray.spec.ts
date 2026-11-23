@@ -84,3 +84,44 @@ test('decoder initializes mode, network, and result from URL search params', asy
   await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: '复制链接' })).toBeVisible();
 });
+
+test('decoder keeps pasted calldata out of the URL until share link is copied and reports clipboard failures', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __copiedText?: string }).__copiedText = undefined;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { __copiedText?: string }).__copiedText = text;
+        },
+      },
+    });
+  });
+
+  await page.goto('/tools/txray/decoder');
+  await page.getByRole('button', { name: 'calldata', exact: true }).click();
+  await page.locator('#decoder-network').selectOption('8453');
+  await page.getByLabel('calldata', { exact: true }).fill(APPROVE_EXAMPLE);
+
+  await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
+  expect(page.url()).not.toContain('calldata=');
+
+  await page.getByRole('button', { name: '复制链接' }).click();
+  await expect(page.getByRole('button', { name: '链接已复制' })).toBeVisible();
+  const copied = await page.evaluate(
+    () => (window as unknown as { __copiedText?: string }).__copiedText,
+  );
+  expect(copied).toContain(`chain=8453&calldata=${APPROVE_EXAMPLE}`);
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await page.getByRole('button', { name: /复制链接|链接已复制/ }).click();
+  await expect(page.getByRole('button', { name: '复制失败' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '链接已复制' })).toHaveCount(0);
+});

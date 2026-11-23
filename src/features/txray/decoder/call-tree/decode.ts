@@ -19,10 +19,10 @@ import {
   PERMIT2_PERMIT_ABIS,
   PERMIT2_PERMIT_ABI_BY_PROFILE,
   SAFE_MULTISEND_ADDRESSES,
-  UNIVERSAL_ROUTER_ADDRESSES,
-  UNIVERSAL_ROUTER_COMMANDS,
+  UNIVERSAL_ROUTER_VERSIONS,
   abiSignature,
   findContainerDefinitions,
+  getUniversalRouterCommand,
   keccakDigest,
   type ContainerDefinition,
   type Permit2FieldProfile,
@@ -466,13 +466,14 @@ function buildContainerInfo(
     }
     case 'uniswap-universal-router':
     case 'uniswap-universal-router-deadline': {
-      const canonical = target ? UNIVERSAL_ROUTER_ADDRESSES.has(target) : false;
+      const routerVersion = target ? UNIVERSAL_ROUTER_VERSIONS[target] : undefined;
       return {
         kind: definition.kind,
-        identification: canonical
+        identification: routerVersion
           ? 'canonical-address-and-abi'
           : 'selector-and-abi-shape',
-        note: canonical ? undefined : 'universal-router-address-unknown',
+        ...(routerVersion ? { version: routerVersion } : {}),
+        note: routerVersion ? undefined : 'universal-router-address-unknown',
       };
     }
     case 'account-execute':
@@ -800,6 +801,10 @@ function expandUniversalRouter(
     return;
   }
 
+  const routerVersion = node.target
+    ? UNIVERSAL_ROUTER_VERSIONS[node.target.toLowerCase()]
+    : undefined;
+
   let budgetTruncated = false;
   for (let index = 0; index < visibleCount; index += 1) {
     if (state.nodeCount >= state.limits.maxNodes) {
@@ -828,7 +833,7 @@ function expandUniversalRouter(
     child.target = node.target;
     child.selector = `0x${commandId.toString(16).padStart(2, '0')}`;
 
-    const def = UNIVERSAL_ROUTER_COMMANDS[commandId];
+    const def = getUniversalRouterCommand(commandId, routerVersion);
     if (!def) {
       child.decodeStatus = 'unknown';
       node.children.push(child);

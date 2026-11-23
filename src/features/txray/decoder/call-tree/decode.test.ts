@@ -1,4 +1,4 @@
-import { encodeFunctionData, parseAbiItem } from 'viem';
+import { encodeAbiParameters, encodeFunctionData, parseAbiItem, parseAbiParameters } from 'viem';
 import { describe, expect, it } from 'vitest';
 import {
   ADDR,
@@ -679,6 +679,41 @@ describe('Safe MultiSend 与 Universal Router 容器解码', () => {
     expect(result.root.children[3]).toMatchObject({
       decodeStatus: 'unknown',
       selector: '0x3f',
+    });
+  });
+
+  it('decodes 0x10 as V4_SWAP only on Universal Router v2 and leaves it unknown on v1.2 or unknown targets', () => {
+    const v4Payload = encodeAbiParameters(
+      parseAbiParameters('bytes actions, bytes[] params'),
+      ['0x00', ['0x1234']],
+    );
+    const data = encodeUniversalRouterExecute([{ commandByte: 0x10, input: v4Payload }]);
+
+    const v2Result = buildCallTree(
+      { to: '0x66a9893cC07D91D95644AEDD05D03f95e1dba8af', data },
+      { nowMs: FIXED_NOW_MS },
+    );
+    expect(v2Result.root.container?.version).toBe('v2');
+    expect(v2Result.root.children[0]).toMatchObject({
+      functionName: 'V4_SWAP',
+      decodeStatus: 'decoded',
+    });
+
+    const v12Result = buildCallTree({ to: ADDR.universalRouter, data }, { nowMs: FIXED_NOW_MS });
+    expect(v12Result.root.container?.version).toBe('v1.2');
+    expect(v12Result.root.children[0]).toMatchObject({
+      decodeStatus: 'unknown',
+      selector: '0x10',
+    });
+    expect(v12Result.root.children[0].riskFindings.map((f) => f.code)).toContain(
+      'unknown-selector',
+    );
+
+    const unknownResult = buildCallTree({ to: null, data }, { nowMs: FIXED_NOW_MS });
+    expect(unknownResult.root.container?.version).toBeUndefined();
+    expect(unknownResult.root.children[0]).toMatchObject({
+      decodeStatus: 'unknown',
+      selector: '0x10',
     });
   });
 });

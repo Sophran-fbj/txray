@@ -105,3 +105,28 @@ test('uses the target from a transaction hash for verified ABI decoding', async 
   await expect(page.getByText(/目标合约已验证 ABI/)).toBeVisible();
   await expect(page.locator('tbody tr').filter({ hasText: 'quantity' })).toHaveCount(1);
 });
+
+test('does not apply explorer current proxy implementation ABI to historical mined transactions', async ({
+  page,
+}) => {
+  const impl = '0x0000000000000000000000000000000000000099';
+  await mockRpc(page, {}, () => ({ result: receipt('0x1') }));
+  await page.route('**/api/contract-abi?**', async (route) => {
+    await route.fulfill({
+      json: {
+        status: 'verified',
+        functions: parseAbi(['function implementation() view returns (address)']),
+        implementation: {
+          address: impl,
+          functions: parseAbi(['function approve(address party, uint256 quantity)']),
+        },
+      },
+    });
+  });
+
+  await openTransaction(page);
+  await expect(page.getByText(/历史交易未套用当前代理实现 ABI/)).toBeVisible();
+  await expect(page.getByText(/经代理实现合约 ABI 解码/)).toHaveCount(0);
+  await expect(page.locator('tbody tr').filter({ hasText: 'quantity' })).toHaveCount(0);
+  await expect(page.getByText('本地选择器表').first()).toBeVisible();
+});
