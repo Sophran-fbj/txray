@@ -11,6 +11,8 @@ import {
   getTxRayChain,
 } from '../chains/chains';
 import { useI18n } from '@/lib/i18n/provider';
+import { CopyButton } from '@/components/CopyButton';
+import { formatUsd } from './viewOptions';
 
 interface ApprovalRowProps {
   approval: Approval;
@@ -49,13 +51,13 @@ export function ApprovalRow({
     transaction.status === 'receipt-unavailable' || transaction.status === 'replaced' || transaction.status === 'reverted'
     ? t.approvals.revokeStatuses[transaction.status]
     : undefined;
-  const cellClass = 'block px-0 py-2 md:table-cell md:px-4 md:py-3';
+  const cellClass = 'block px-0 py-2 md:table-cell md:px-4 md:py-3.5';
 
   return (
-    <tr className="block rounded-box border border-base-300 p-4 md:table-row md:border-0 md:p-0">
+    <tr className="block rounded-box border border-base-300 bg-base-200/40 p-4 md:table-row md:border-0 md:bg-transparent md:p-0 md:hover:bg-base-200/50">
       <td className={cellClass}>
         <MobileLabel>{t.approvals.asset}</MobileLabel>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">{approval.symbol}</span>
           {approval.kind === 'nft' && (
             <span className="badge badge-ghost badge-sm">
@@ -69,14 +71,20 @@ export function ApprovalRow({
             <span className="badge badge-info badge-sm">Permit2</span>
           )}
         </div>
-        <AddressLink address={approval.token} chainId={chainId} />
+        <div className="mt-0.5 flex items-center gap-1">
+          <AddressLink address={approval.token} chainId={chainId} />
+          <CopyButton value={approval.token} label={approval.symbol} />
+        </div>
       </td>
       <td className={cellClass}>
         <MobileLabel>{t.approvals.spenderRisk}</MobileLabel>
-        <RiskBadge risk={risk} unavailable={riskUnavailable} />
-        <AddressLink address={approval.spender} chainId={chainId} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <RiskBadge risk={risk} unavailable={riskUnavailable} />
+          <AddressLink address={approval.spender} chainId={chainId} />
+          <CopyButton value={approval.spender} />
+        </div>
         {risk && risk.level !== 'known' && (
-          <div className="mt-0.5 text-xs text-base-content/70">
+          <div className="mt-1 text-xs text-base-content/70">
             {formatRiskReason(risk, t.approvals)}
           </div>
         )}
@@ -103,7 +111,11 @@ export function ApprovalRow({
           <span className="font-mono text-sm">#{approval.tokenId}</span>
         ) : (
           <>
-            {scope !== 'max' && <span className="block break-all font-mono text-sm">{approval.amountText}</span>}
+            {scope !== 'max' && (
+              <span className="block break-all font-mono text-sm tabular-nums">
+                {approval.amountText}
+              </span>
+            )}
             {(scope === 'max' || scope === 'large') && (
               <span className={`badge badge-sm ${scope === 'max' ? 'badge-error' : 'badge-warning'}`}>
                 {t.approvalScope[scope]}
@@ -245,11 +257,11 @@ function AtRisk({
       : undefined;
 
   return (
-    <div className="mt-1 text-xs text-base-content/70">
+    <div className="mt-1 text-xs tabular-nums text-base-content/70">
       {t.approvals.exposure}: {approval.atRiskAmountText ?? t.approvals.unknown}{' '}
       {approval.atRiskAmountText ? approval.symbol : ''}
       {typeof usdValue === 'number' && Number.isFinite(usdValue) && (
-        <span className="ml-1 text-warning">≈ ${formatUsd(usdValue)}</span>
+        <span className="ml-1 font-medium text-warning">≈ ${formatUsd(usdValue)}</span>
       )}
     </div>
   );
@@ -292,16 +304,6 @@ function formatRiskReason(
     case 'known':
       return risk.labelName ?? messages.reasonUnknown;
   }
-}
-
-function formatUsd(value: number): string {
-  if (value >= 1000) {
-    return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  }
-  if (value >= 1) {
-    return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  }
-  return value.toLocaleString('en-US', { maximumSignificantDigits: 2 });
 }
 
 function formatExpiry(

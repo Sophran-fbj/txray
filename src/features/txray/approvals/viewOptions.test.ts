@@ -3,7 +3,7 @@ import type { Address } from 'viem';
 import type { Approval } from './types';
 import { getApprovalScope } from './approvalScope';
 import type { SpenderRisk } from './useSpenderRisk';
-import { selectApprovals } from './viewOptions';
+import { selectApprovals, summarizeApprovals } from './viewOptions';
 
 const token = '0x0000000000000000000000000000000000000001' as Address;
 const known = '0x0000000000000000000000000000000000000002' as Address;
@@ -67,5 +67,46 @@ describe('approval view options', () => {
     expect(getApprovalScope(veryLarge)).toBe('large');
     expect(getApprovalScope(approvals[2])).toBe('max');
     expect(selectApprovals([veryLarge], risks, undefined, 'broad', 'risk')).toEqual([veryLarge]);
+  });
+
+  it('summarizes attention, broad scope, high-risk spenders, and priced vs unpriced exposure', () => {
+    const token2 = '0x0000000000000000000000000000000000000009' as Address;
+    const mixed: Approval[] = [
+      ...approvals,
+      {
+        kind: 'permit2',
+        id: 'permit2-priced',
+        token: token2,
+        spender: known,
+        symbol: 'WETH',
+        decimals: 18,
+        amountText: '无限',
+        amount: 2n ** 160n - 1n,
+        expiration: 4102444800,
+        atRiskAmountText: '1.5',
+      },
+      {
+        kind: 'nft',
+        id: 'nft-collection',
+        token: token2,
+        spender: unknown,
+        symbol: 'BAYC',
+      },
+    ];
+
+    const summary = summarizeApprovals(mixed, risks, {
+      [token.toLowerCase()]: 2,
+      [token2.toLowerCase()]: 2000,
+    });
+
+    expect(summary).toEqual({
+      total: 5,
+      attention: 4,
+      broad: 3,
+      highRiskSpender: 1,
+      pricedExposureUsd: 3202,
+      pricedCount: 3,
+      unpricedCount: 1,
+    });
   });
 });
