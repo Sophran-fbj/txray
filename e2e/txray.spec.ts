@@ -78,11 +78,31 @@ test('decoder keeps transaction hashes and calldata in separate input modes', as
 });
 
 test('decoder initializes mode, network, and result from URL search params', async ({ page }) => {
-  await page.goto(`/tools/txray/decoder?chain=8453&calldata=${APPROVE_EXAMPLE}`);
+  const target = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+  await page.route('**/api/contract-abi?**', (route) =>
+    route.fulfill({ json: { status: 'unverified' } }),
+  );
+  await page.goto(`/tools/txray/decoder?chain=8453&calldata=${APPROVE_EXAMPLE}&target=${target}`);
   await expect(page.locator('#decoder-network')).toHaveValue('8453');
   await expect(page.getByRole('button', { name: 'calldata', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('目标合约地址（可选）')).toHaveValue(target);
   await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: '复制链接' })).toBeVisible();
+  expect(page.url()).toContain(`calldata=${APPROVE_EXAMPLE}`);
+  expect(page.url()).toContain(`target=${target}`);
+
+  await page.reload();
+  await expect(page.locator('#decoder-network')).toHaveValue('8453');
+  await expect(page.getByRole('button', { name: 'calldata', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('目标合约地址（可选）')).toHaveValue(target);
+  await expect(page.getByText('approve', { exact: true }).first()).toBeVisible();
+
+  await page.getByLabel('calldata', { exact: true }).fill(APPROVE_EXAMPLE);
+  await expect(page.getByRole('button', { name: '嵌套调用示例' })).toBeVisible();
+  await page.getByRole('button', { name: '嵌套调用示例' }).click();
+  await expect.poll(() => page.url()).not.toContain('calldata=');
+  expect(page.url()).not.toContain('target=');
+  expect(page.url()).toContain('chain=8453');
 });
 
 test('decoder keeps pasted calldata out of the URL until share link is copied and reports clipboard failures', async ({

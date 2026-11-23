@@ -40,23 +40,54 @@ export const SAFE_MULTISEND_ADDRESSES: Record<string, string> = {
   '0x9641d764fc13c8b624c04430c7356c1c7c8102e2': 'Safe MultiSendCallOnly v1.4.1',
 };
 
-// Uniswap Universal Router 官方部署地址及对应版本（Ethereum / Base / Arbitrum / Optimism）。
+// Uniswap Universal Router 各链官方部署地址与版本（Uniswap/universal-router@2.0.0 deploy-addresses/*.json）。
+// 注意同地址在不同链含义可能不同（例如 0xef1c6e... 在 Arbitrum 为 UnsupportedProtocol）。
 // 关键版本差异：0x10 在 v1/v1.2 为 Seaport NFT 指令，在 v2 起改为 V4_SWAP。
 export type UniversalRouterVersion = 'v1' | 'v1.2' | 'v2';
 
-export const UNIVERSAL_ROUTER_VERSIONS: Record<string, UniversalRouterVersion> = {
-  '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b': 'v1',
-  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': 'v1.2',
-  '0x5e325eda8064b456f4781070c0738d849c824258': 'v1.2',
-  '0x66a9893cc07d91d95644aedd05d03f95e1dba8af': 'v2',
-  '0x6ff5693b99212da76ad316178a184ab56d299b43': 'v2',
-  '0xa51afafe0263b40edaef0df8781ea9aa03e381a3': 'v2',
-  '0x851116d9223fabed8e56c0e6b8ad0c31d98b3507': 'v2',
+export const UNIVERSAL_ROUTER_VERSIONS_BY_CHAIN: Readonly<
+  Partial<Record<number, Readonly<Record<string, UniversalRouterVersion>>>>
+> = {
+  1: {
+    '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b': 'v1',
+    '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': 'v1.2',
+    '0x66a9893cc07d91d95644aedd05d03f95e1dba8af': 'v2',
+  },
+  8453: {
+    '0xec8b0f7ffe3ae75d7ffab09429e3675bb63503e4': 'v1.2',
+    '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': 'v1.2',
+    '0x6ff5693b99212da76ad316178a184ab56d299b43': 'v2',
+  },
+  42161: {
+    '0x4c60051384bd2d3c01bfc845cf5f4b44bcbe9de5': 'v1',
+    '0xec8b0f7ffe3ae75d7ffab09429e3675bb63503e4': 'v1.2',
+    '0x5e325eda8064b456f4781070c0738d849c824258': 'v1.2',
+    '0xa51afafe0263b40edaef0df8781ea9aa03e381a3': 'v2',
+  },
+  10: {
+    '0xb555edf5dcf85f42ceef1f3630a52a108e55a654': 'v1',
+    '0xec8b0f7ffe3ae75d7ffab09429e3675bb63503e4': 'v1.2',
+    '0xcb1355ff08ab38bbce60111f1bb2b784be25d7e8': 'v1.2',
+    '0x851116d9223fabed8e56c0e6b8ad0c31d98b3507': 'v2',
+  },
 };
 
-export const UNIVERSAL_ROUTER_ADDRESSES: ReadonlySet<string> = new Set(
-  Object.keys(UNIVERSAL_ROUTER_VERSIONS),
-);
+export function isUniversalRouterVersion(
+  value: string | undefined,
+): value is UniversalRouterVersion {
+  return value === 'v1' || value === 'v1.2' || value === 'v2';
+}
+
+export function getUniversalRouterVersion(
+  address: string | null | undefined,
+  chainId: number | undefined,
+): UniversalRouterVersion | undefined {
+  if (!address || chainId === undefined) return undefined;
+  const byAddress = UNIVERSAL_ROUTER_VERSIONS_BY_CHAIN[chainId];
+  if (!byAddress) return undefined;
+  const normalized = address.toLowerCase();
+  return Object.hasOwn(byAddress, normalized) ? byAddress[normalized] : undefined;
+}
 
 // EntryPoint 官方地址 → 版本（eth-infinitism release notes，见文件头注释）。
 export const ENTRYPOINT_ADDRESSES: Record<string, string> = {

@@ -32,6 +32,7 @@ interface CallTreeViewProps {
   selector: string;
   signature: string | null;
   verifiedCall?: VerifiedCall;
+  chainId?: number;
 }
 
 export function useCallTree(props: CallTreeViewProps): CallTreeResult {
@@ -44,11 +45,12 @@ export function useCallTree(props: CallTreeViewProps): CallTreeResult {
           data: props.data,
         },
         {
+          chainId: props.chainId,
           signatures: props.signature && !props.verifiedCall ? { [props.selector]: props.signature } : {},
           verifiedRoot: props.verifiedCall,
         },
       ),
-    [props.to, props.value, props.data, props.selector, props.signature, props.verifiedCall],
+    [props.to, props.value, props.data, props.selector, props.signature, props.verifiedCall, props.chainId],
   );
 }
 

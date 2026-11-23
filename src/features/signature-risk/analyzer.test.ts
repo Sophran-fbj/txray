@@ -530,6 +530,110 @@ describe('analyzeTypedData', () => {
     expect(decoyVote.orderSummary).toBeUndefined();
   });
 
+  it('prevents __proto__ struct fields and Object.prototype lookups from leaking across EIP-712 projection', () => {
+    const offerer = '0x1111111111111111111111111111111111111111';
+    const nft = '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D';
+
+    // 1. Primary type "Order" declares a __proto__ struct field containing offer/consideration.
+    // Raw JSON parses "__proto__" as an own key; null-prototype projection + Object.defineProperty
+    // + Object.hasOwn must prevent it from becoming the prototype of signedMessage.
+    const protoOrderPayload = `{
+      "types": {
+        "EIP712Domain": [{ "name": "name", "type": "string" }],
+        "DecoyAsset": [
+          { "name": "itemType", "type": "uint8" },
+          { "name": "token", "type": "address" },
+          { "name": "startAmount", "type": "uint256" },
+          { "name": "recipient", "type": "address" }
+        ],
+        "ProtoCarrier": [
+          { "name": "offer", "type": "DecoyAsset[]" },
+          { "name": "consideration", "type": "DecoyAsset[]" }
+        ],
+        "Order": [
+          { "name": "proposalId", "type": "uint256" },
+          { "name": "__proto__", "type": "ProtoCarrier" }
+        ]
+      },
+      "domain": { "name": "Seaport" },
+      "primaryType": "Order",
+      "message": {
+        "proposalId": "9",
+        "__proto__": {
+          "offer": [
+            { "itemType": 2, "token": "${nft}", "startAmount": "1", "recipient": "${offerer}" }
+          ],
+          "consideration": [
+            { "itemType": 0, "token": "0x0000000000000000000000000000000000000000", "startAmount": "100", "recipient": "${offerer}" }
+          ]
+        }
+      }
+    }`;
+    const protoOrder = analyzeTypedData(protoOrderPayload);
+    expect(protoOrder.riskKind).toBe('unknown');
+    expect(protoOrder.orderSummary).toBeUndefined();
+
+    // 2. ConsiderationItem declares a __proto__ struct field carrying recipient/startAmount.
+    const protoConsiderationPayload = `{
+      "types": {
+        "EIP712Domain": [{ "name": "name", "type": "string" }],
+        "OfferItem": [
+          { "name": "itemType", "type": "uint8" },
+          { "name": "token", "type": "address" },
+          { "name": "startAmount", "type": "uint256" }
+        ],
+        "ConsiderationMeta": [
+          { "name": "startAmount", "type": "uint256" },
+          { "name": "recipient", "type": "address" }
+        ],
+        "ConsiderationItem": [
+          { "name": "itemType", "type": "uint8" },
+          { "name": "token", "type": "address" },
+          { "name": "__proto__", "type": "ConsiderationMeta" }
+        ],
+        "OrderComponents": [
+          { "name": "offerer", "type": "address" },
+          { "name": "offer", "type": "OfferItem[]" },
+          { "name": "consideration", "type": "ConsiderationItem[]" }
+        ]
+      },
+      "domain": { "name": "Seaport" },
+      "primaryType": "OrderComponents",
+      "message": {
+        "offerer": "${offerer}",
+        "offer": [{ "itemType": 2, "token": "${nft}", "startAmount": "1" }],
+        "consideration": [
+          {
+            "itemType": 0,
+            "token": "0x0000000000000000000000000000000000000000",
+            "__proto__": {
+              "startAmount": "1000000000000000000",
+              "recipient": "${offerer}"
+            }
+          }
+        ]
+      }
+    }`;
+    const protoConsideration = analyzeTypedData(protoConsiderationPayload);
+    expect(protoConsideration.orderSummary?.receiveByOfferer).toHaveLength(0);
+    expect(protoConsideration.orderSummary?.receiveByOthers[0]?.recipient).toBeUndefined();
+    expect(protoConsideration.orderSummary?.receiveByOthers[0]?.startAmount).toBeUndefined();
+    expect(protoConsideration.orderSummary?.zeroReturnToOfferer).toBe(true);
+
+    // 3. Omitted field named `toString` is treated as missing rather than resolved via Object.prototype.
+    expect(() =>
+      analyzeTypedData(JSON.stringify({
+        types: {
+          EIP712Domain: [{ name: 'name', type: 'string' }],
+          Note: [{ name: 'toString', type: 'string' }],
+        },
+        domain: { name: 'Example' },
+        primaryType: 'Note',
+        message: {},
+      })),
+    ).toThrow(/message\.toString is missing/);
+  });
+
   it('does not pretend unknown typed data is classified', () => {
     const result = analyzeTypedData(
       JSON.stringify({

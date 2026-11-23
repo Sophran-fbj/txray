@@ -19,10 +19,11 @@ import {
   PERMIT2_PERMIT_ABIS,
   PERMIT2_PERMIT_ABI_BY_PROFILE,
   SAFE_MULTISEND_ADDRESSES,
-  UNIVERSAL_ROUTER_VERSIONS,
   abiSignature,
   findContainerDefinitions,
   getUniversalRouterCommand,
+  getUniversalRouterVersion,
+  isUniversalRouterVersion,
   keccakDigest,
   type ContainerDefinition,
   type Permit2FieldProfile,
@@ -63,6 +64,7 @@ import type {
 
 interface TreeState {
   limits: DecodeLimits;
+  chainId?: number;
   signatures: Record<string, string>;
   verifiedRoot?: CallTreeOptions['verifiedRoot'];
   nodeCount: number;
@@ -354,7 +356,7 @@ function expandContainer(
   node.functionName = decoded.functionName;
   node.signature = decoded.signature;
   node.decodeStatus = 'decoded';
-  node.container = buildContainerInfo(definition, meta);
+  node.container = buildContainerInfo(definition, meta, state.chainId);
 
   switch (definition.kind) {
     case 'multicall3-aggregate3':
@@ -396,6 +398,7 @@ const ENTRYPOINT_LAYOUT_BY_VERSION: Record<string, 'packed' | 'legacy'> = {
 function buildContainerInfo(
   definition: ContainerDefinition,
   meta: CallMeta,
+  chainId?: number,
 ): ContainerInfo {
   const target = meta.to?.toLowerCase() ?? null;
   switch (definition.kind) {
@@ -466,7 +469,7 @@ function buildContainerInfo(
     }
     case 'uniswap-universal-router':
     case 'uniswap-universal-router-deadline': {
-      const routerVersion = target ? UNIVERSAL_ROUTER_VERSIONS[target] : undefined;
+      const routerVersion = getUniversalRouterVersion(target, chainId);
       return {
         kind: definition.kind,
         identification: routerVersion
@@ -801,8 +804,8 @@ function expandUniversalRouter(
     return;
   }
 
-  const routerVersion = node.target
-    ? UNIVERSAL_ROUTER_VERSIONS[node.target.toLowerCase()]
+  const routerVersion = isUniversalRouterVersion(node.container?.version)
+    ? node.container.version
     : undefined;
 
   let budgetTruncated = false;
@@ -1264,6 +1267,7 @@ export function buildCallTree(
   const limits: DecodeLimits = { ...DEFAULT_DECODE_LIMITS, ...options.limits };
   const state: TreeState = {
     limits,
+    chainId: options.chainId,
     signatures: options.signatures ?? {},
     verifiedRoot: options.verifiedRoot,
     nodeCount: 0,

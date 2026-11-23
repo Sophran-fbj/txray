@@ -26,11 +26,14 @@ describe('riskCases registry', () => {
   it('produces concrete high-severity findings when executed through TxRay analyzers', () => {
     for (const item of riskCases) {
       if (item.tool === 'decoder') {
-        const tree = buildCallTree({
-          to: item.target ?? null,
-          value: null,
-          data: item.calldata,
-        });
+        const tree = buildCallTree(
+          {
+            to: item.target ?? null,
+            value: null,
+            data: item.calldata,
+          },
+          { chainId: item.chainId },
+        );
         const findings = collectFindings(tree.root);
         expect(findings.some((finding) => finding.severity === 'high')).toBe(true);
       } else {

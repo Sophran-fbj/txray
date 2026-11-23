@@ -107,9 +107,14 @@ function DecoderContent() {
   const initialChainParam = Number(searchParams.get('chain'));
   const hasInitialCalldata =
     Boolean(initialDecoderCase) || (!initialTxParam && Boolean(initialCalldataParam));
+  const incomingCalldataLink =
+    !initialDecoderCase && !initialTxParam && Boolean(initialCalldataParam);
 
   const [activeCaseId, setActiveCaseId] = useState<string | null>(
     () => initialDecoderCase?.id ?? null,
+  );
+  const [preserveSharedCalldataUrl, setPreserveSharedCalldataUrl] = useState<boolean>(
+    () => incomingCalldataLink,
   );
   const activeCase = activeCaseId ? getRiskCase(activeCaseId) : undefined;
   const activeDecoderCase = activeCase?.tool === 'decoder' ? activeCase : undefined;
@@ -141,6 +146,7 @@ function DecoderContent() {
     inputValid && (mode === 'tx' || value.length <= MAX_URL_CALLDATA_CHARS);
 
   useEffect(() => {
+    if (preserveSharedCalldataUrl) return;
     const params = new URLSearchParams();
     if (activeDecoderCase) {
       params.set('case', activeDecoderCase.id);
@@ -157,7 +163,7 @@ function DecoderContent() {
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
       window.history.replaceState(null, '', nextUrl);
     }
-  }, [activeDecoderCase, chainId, mode, value]);
+  }, [activeDecoderCase, chainId, mode, preserveSharedCalldataUrl, value]);
 
   return (
     <AppShell maxWidth="5xl" headerRight={<WalletButton />} footerNote={t.decoder.readonly}>
@@ -219,6 +225,7 @@ function DecoderContent() {
                 aria-pressed={mode === 'tx'}
                 onClick={() => {
                   setActiveCaseId(null);
+                  setPreserveSharedCalldataUrl(false);
                   setMode('tx');
                 }}
               >
@@ -230,6 +237,7 @@ function DecoderContent() {
                 aria-pressed={mode === 'calldata'}
                 onClick={() => {
                   setActiveCaseId(null);
+                  if (mode !== 'calldata') setPreserveSharedCalldataUrl(false);
                   setMode('calldata');
                 }}
               >
@@ -246,7 +254,10 @@ function DecoderContent() {
               id="decoder-network"
               className="select select-bordered select-sm w-full"
               value={chainId}
-              onChange={(event) => setChainId(Number(event.target.value))}
+              onChange={(event) => {
+                setPreserveSharedCalldataUrl(false);
+                setChainId(Number(event.target.value));
+              }}
             >
               {TXRAY_CHAINS.map((chain) => (
                 <option key={chain.id} value={chain.id}>
@@ -268,6 +279,7 @@ function DecoderContent() {
             value={input}
             onChange={(event) => {
               setActiveCaseId(null);
+              setPreserveSharedCalldataUrl(false);
               if (mode === 'tx') {
                 setTxInput(event.target.value);
               } else {
@@ -293,6 +305,7 @@ function DecoderContent() {
                   type="button"
                   className="btn btn-outline btn-xs border-primary/40 text-primary"
                   onClick={() => {
+                    setPreserveSharedCalldataUrl(false);
                     setCalldataInput(value);
                     setTxInput('');
                     setMode('calldata');
@@ -306,6 +319,7 @@ function DecoderContent() {
                   type="button"
                   className="btn btn-outline btn-xs border-primary/40 text-primary"
                   onClick={() => {
+                    setPreserveSharedCalldataUrl(false);
                     setTxInput(value);
                     setCalldataInput('');
                     setMode('tx');
@@ -324,6 +338,7 @@ function DecoderContent() {
               className="btn btn-ghost btn-xs border border-base-300 text-primary"
               onClick={() => {
                 setActiveCaseId(null);
+                setPreserveSharedCalldataUrl(false);
                 setMode('calldata');
                 setCalldataInput(APPROVE_EXAMPLE);
                 setCalldataTarget('');
@@ -336,6 +351,7 @@ function DecoderContent() {
               className="btn btn-ghost btn-xs border border-base-300 text-secondary"
               onClick={() => {
                 setActiveCaseId(null);
+                setPreserveSharedCalldataUrl(false);
                 setMode('calldata');
                 setCalldataInput(NESTED_MULTICALL_EXAMPLE);
                 setCalldataTarget('');
@@ -375,6 +391,7 @@ function DecoderContent() {
                 autoComplete="off"
                 onChange={(event) => {
                   setActiveCaseId(null);
+                  setPreserveSharedCalldataUrl(false);
                   setCalldataTarget(event.target.value);
                 }}
                 aria-invalid={Boolean(targetValue && !targetAddress)}
@@ -448,6 +465,7 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
     selector: data.selector,
     signature: data.signature,
     verifiedCall: data.verifiedCall,
+    chainId,
   });
   const dangerStyle =
     data.danger === 'high'

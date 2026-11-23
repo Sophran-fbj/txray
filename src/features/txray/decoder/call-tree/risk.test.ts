@@ -477,7 +477,7 @@ describe('风险规则：通用约束', () => {
       ],
       expired,
     );
-    const result = buildCallTree({ to: ADDR.universalRouter, data }, { nowMs: NOW_MS });
+    const result = buildCallTree({ to: ADDR.universalRouter, data }, { chainId: 1, nowMs: NOW_MS });
     expect(findByCode(result.root, 'permit2-permit')).toHaveLength(1);
     expect(findByCode(result.root, 'batch-contains-high-risk')).toHaveLength(1);
     expect(findByCode(result.root, 'deadline-suspicious').length).toBeGreaterThanOrEqual(2);

@@ -103,8 +103,10 @@ const SECONDS_PER_DAY = 86_400n;
 export function analyzeTypedData(input: string): SignatureAnalysis {
   const typedData = normalizeTypedDataShape(parseJson(input));
   const { domain, primaryType, message, types } = typedData;
-  const verifyingContract = asAddress(domain.verifyingContract);
-  if (types?.EIP712Domain) collectTypedLeaves(types, 'EIP712Domain', domain);
+  const verifyingContract = asAddress(getOwn(domain, 'verifyingContract'));
+  if (types && Object.hasOwn(types, 'EIP712Domain')) {
+    collectTypedLeaves(types, 'EIP712Domain', domain);
+  }
   const leaves = types && primaryType
     ? collectTypedLeaves(types, primaryType, message)
     : collectFallbackLeaves(message);
@@ -160,9 +162,10 @@ export function analyzeTypedData(input: string): SignatureAnalysis {
     explain = 'This looks like an order-style signature. Signing can authorize a marketplace or conduit to move NFTs or settle an order.';
   }
 
+  const rawDomainName = getOwn(domain, 'name');
   return {
-    domainName: typeof domain.name === 'string' ? domain.name : undefined,
-    chainId: scalarText(domain.chainId),
+    domainName: typeof rawDomainName === 'string' ? rawDomainName : undefined,
+    chainId: scalarText(getOwn(domain, 'chainId')),
     verifyingContract,
     primaryType,
     danger,
@@ -200,15 +203,26 @@ function parseTypedDataCandidate(value: unknown): Record<string, unknown> | unde
   return isRecord(value) ? value : undefined;
 }
 
+function getOwn(record: Record<string, unknown>, key: string): unknown {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
+function getOwnStruct(
+  types: Record<string, TypedDataField[]>,
+  type: string,
+): TypedDataField[] | undefined {
+  return Object.hasOwn(types, type) ? types[type] : undefined;
+}
+
 function parseTypes(value: unknown): Record<string, TypedDataField[]> | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) throw new Error('Typed data types must be an object.');
 
-  const output: Record<string, TypedDataField[]> = {};
+  const output = Object.create(null) as Record<string, TypedDataField[]>;
   for (const [typeName, fields] of Object.entries(value)) {
     if (!Array.isArray(fields)) throw new Error(`Type ${typeName} must be an array.`);
     const names = new Set<string>();
-    output[typeName] = fields.map((field) => {
+    const parsedFields = fields.map((field) => {
       if (
         !isRecord(field) ||
         typeof field.name !== 'string' ||
@@ -220,12 +234,21 @@ function parseTypes(value: unknown): Record<string, TypedDataField[]> | undefine
       names.add(field.name);
       return { name: field.name, type: field.type };
     });
+    Object.defineProperty(output, typeName, {
+      value: parsedFields,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   for (const [typeName, fields] of Object.entries(output)) {
     for (const field of fields) {
       const baseType = field.type.replace(/(\[\d*\])+$/, '');
       const suffix = field.type.slice(baseType.length);
-      if (!/^(\[\d*\])*$/.test(suffix) || (!isPrimitiveType(baseType) && !output[baseType])) {
+      if (
+        !/^(\[\d*\])*$/.test(suffix) ||
+        (!isPrimitiveType(baseType) && !Object.hasOwn(output, baseType))
+      ) {
         throw new Error(`Type ${typeName}.${field.name} has unsupported type ${field.type}.`);
       }
     }
@@ -246,38 +269,43 @@ function normalizeTypedDataShape(parsed: unknown): TypedDataLike {
   if (!isRecord(parsed)) throw new Error('Input must be a typed-data JSON object.');
 
   let candidate = parsed;
-  if (parsed.typedData !== undefined) {
-    const nested = parseTypedDataCandidate(parsed.typedData);
+  const nestedTypedData = getOwn(parsed, 'typedData');
+  const nestedParams = getOwn(parsed, 'params');
+  if (nestedTypedData !== undefined) {
+    const nested = parseTypedDataCandidate(nestedTypedData);
     if (!nested) throw new Error('typedData must contain a JSON object.');
     candidate = nested;
-  } else if (Array.isArray(parsed.params)) {
-    const nested = parsed.params
+  } else if (Array.isArray(nestedParams)) {
+    const nested = nestedParams
       .map(parseTypedDataCandidate)
-      .find((item) => item && isRecord(item.message));
+      .find((item) => item && isRecord(getOwn(item, 'message')));
     if (nested) candidate = nested;
   }
 
-  if (!isRecord(candidate.message)) {
+  const candidateMessage = getOwn(candidate, 'message');
+  if (!isRecord(candidateMessage)) {
     throw new Error('Typed data must contain a message object.');
   }
-  if (candidate.domain !== undefined && !isRecord(candidate.domain)) {
+  const candidateDomain = getOwn(candidate, 'domain');
+  if (candidateDomain !== undefined && !isRecord(candidateDomain)) {
     throw new Error('Typed data domain must be an object.');
   }
-  if (candidate.primaryType !== undefined && typeof candidate.primaryType !== 'string') {
+  const candidatePrimaryType = getOwn(candidate, 'primaryType');
+  if (candidatePrimaryType !== undefined && typeof candidatePrimaryType !== 'string') {
     throw new Error('Typed data primaryType must be a string.');
   }
 
-  const types = parseTypes(candidate.types);
+  const types = parseTypes(getOwn(candidate, 'types'));
   const primaryType =
-    typeof candidate.primaryType === 'string' ? candidate.primaryType : undefined;
-  if (types && primaryType && !types[primaryType]) {
+    typeof candidatePrimaryType === 'string' ? candidatePrimaryType : undefined;
+  if (types && primaryType && !getOwnStruct(types, primaryType)) {
     throw new Error(`primaryType ${primaryType} is missing from types.`);
   }
 
   return {
-    domain: isRecord(candidate.domain) ? candidate.domain : {},
+    domain: isRecord(candidateDomain) ? candidateDomain : {},
     primaryType,
-    message: candidate.message,
+    message: candidateMessage,
     types,
   };
 }
@@ -305,14 +333,14 @@ function collectTypedLeaves(
       return;
     }
 
-    const struct = types[type];
+    const struct = getOwnStruct(types, type);
     if (struct) {
       if (!isRecord(value)) throw new Error(`${path} must be an object of type ${type}.`);
       for (const field of struct) {
-        if (!(field.name in value)) throw new Error(`${path}.${field.name} is missing.`);
+        if (!Object.hasOwn(value, field.name)) throw new Error(`${path}.${field.name} is missing.`);
         visit(
           field.type,
-          value[field.name],
+          getOwn(value, field.name),
           field.name,
           `${path}.${field.name}`,
           depth + 1,
@@ -335,7 +363,7 @@ function extractSchemaRecord(
   message: Record<string, unknown>,
 ): Record<string, unknown> {
   const projected = extractSchemaValue(types, primaryType, message, 0);
-  return isRecord(projected) ? projected : {};
+  return isRecord(projected) ? projected : (Object.create(null) as Record<string, unknown>);
 }
 
 function extractSchemaValue(
@@ -350,12 +378,17 @@ function extractSchemaValue(
     if (!Array.isArray(value)) return [];
     return value.map((item) => extractSchemaValue(types, arrayMatch[1], item, depth + 1));
   }
-  const struct = types[type];
+  const struct = getOwnStruct(types, type);
   if (struct) {
-    if (!isRecord(value)) return {};
-    const output: Record<string, unknown> = {};
+    const output = Object.create(null) as Record<string, unknown>;
+    if (!isRecord(value)) return output;
     for (const field of struct) {
-      output[field.name] = extractSchemaValue(types, field.type, value[field.name], depth + 1);
+      Object.defineProperty(output, field.name, {
+        value: extractSchemaValue(types, field.type, getOwn(value, field.name), depth + 1),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
     return output;
   }
@@ -468,12 +501,15 @@ function findingFromLeaf(leaf: TypedLeaf): FieldFinding[] {
 }
 
 function buildOrderSummary(message: Record<string, unknown>): OrderSummary {
-  const offerer = asAddress(message.offerer);
-  const zone = asAddress(message.zone);
-  const conduitKey = typeof message.conduitKey === 'string' ? message.conduitKey : undefined;
-  const give = Array.isArray(message.offer) ? message.offer.flatMap(parseOrderItem) : [];
-  const consideration = Array.isArray(message.consideration)
-    ? message.consideration.flatMap(parseOrderItem)
+  const offerer = asAddress(getOwn(message, 'offerer'));
+  const zone = asAddress(getOwn(message, 'zone'));
+  const rawConduitKey = getOwn(message, 'conduitKey');
+  const conduitKey = typeof rawConduitKey === 'string' ? rawConduitKey : undefined;
+  const rawOffer = getOwn(message, 'offer');
+  const rawConsideration = getOwn(message, 'consideration');
+  const give = Array.isArray(rawOffer) ? rawOffer.flatMap(parseOrderItem) : [];
+  const consideration = Array.isArray(rawConsideration)
+    ? rawConsideration.flatMap(parseOrderItem)
     : [];
 
   const receiveByOfferer: OrderAssetItem[] = [];
@@ -506,12 +542,12 @@ function parseOrderItem(value: unknown): OrderAssetItem[] {
   if (!isRecord(value)) return [];
   return [
     {
-      itemType: mapOrderItemType(value.itemType),
-      token: asAddress(value.token),
-      identifierOrCriteria: optionalScalarText(value.identifierOrCriteria),
-      startAmount: optionalScalarText(value.startAmount),
-      endAmount: optionalScalarText(value.endAmount),
-      recipient: asAddress(value.recipient),
+      itemType: mapOrderItemType(getOwn(value, 'itemType')),
+      token: asAddress(getOwn(value, 'token')),
+      identifierOrCriteria: optionalScalarText(getOwn(value, 'identifierOrCriteria')),
+      startAmount: optionalScalarText(getOwn(value, 'startAmount')),
+      endAmount: optionalScalarText(getOwn(value, 'endAmount')),
+      recipient: asAddress(getOwn(value, 'recipient')),
     },
   ];
 }
@@ -550,45 +586,48 @@ function classifyPermit(
   message: Record<string, unknown>,
   domain: Record<string, unknown>,
 ): 'permit2-allowance' | 'permit2-transfer' | 'erc20-permit' | 'nft-order' | 'unknown' {
-  const domainName = typeof domain.name === 'string' ? domain.name.toLowerCase() : '';
+  const rawDomainName = getOwn(domain, 'name');
+  const domainName = typeof rawDomainName === 'string' ? rawDomainName.toLowerCase() : '';
   const type = primaryType?.toLowerCase();
   const allowanceType = type === 'permitsingle' || type === 'permitbatch';
   const transferType = type !== undefined && /^permit(?:batch)?(?:witness)?transferfrom$/.test(type);
   const permit2Domain = domainName === 'permit2';
   const isPermission = (item: unknown): boolean =>
-    isRecord(item) && Boolean(asAddress(item.token)) && isUnsignedValue(item.amount);
+    isRecord(item) && Boolean(asAddress(getOwn(item, 'token'))) && isUnsignedValue(getOwn(item, 'amount'));
   const permissionItems = (item: unknown): boolean =>
     Array.isArray(item) ? item.length > 0 && item.every(isPermission) : isPermission(item);
   const isAllowanceDetails = (item: unknown): boolean =>
     isPermission(item) && isRecord(item) &&
-    isUnsignedValue(item.expiration) && isUnsignedValue(item.nonce);
+    isUnsignedValue(getOwn(item, 'expiration')) && isUnsignedValue(getOwn(item, 'nonce'));
   const allowanceItems = (item: unknown): boolean =>
     Array.isArray(item) ? item.length > 0 && item.every(isAllowanceDetails) : isAllowanceDetails(item);
-  const hasAllowanceShape = allowanceItems(message.details) &&
-    Boolean(asAddress(message.spender)) && isUnsignedValue(message.sigDeadline);
-  const hasTransferShape = permissionItems(message.permitted) &&
-    isUnsignedValue(message.nonce) && isUnsignedValue(message.deadline);
+  const hasAllowanceShape = allowanceItems(getOwn(message, 'details')) &&
+    Boolean(asAddress(getOwn(message, 'spender'))) && isUnsignedValue(getOwn(message, 'sigDeadline'));
+  const hasTransferShape = permissionItems(getOwn(message, 'permitted')) &&
+    isUnsignedValue(getOwn(message, 'nonce')) && isUnsignedValue(getOwn(message, 'deadline'));
 
   if ((allowanceType || (!type && permit2Domain)) && hasAllowanceShape) return 'permit2-allowance';
   if ((transferType || (!type && permit2Domain)) && hasTransferShape) return 'permit2-transfer';
   if ((type === 'permit' || !type) &&
-    Boolean(asAddress(message.owner)) && Boolean(asAddress(message.spender)) &&
-    isUnsignedValue(message.value) && isUnsignedValue(message.deadline)) {
+    Boolean(asAddress(getOwn(message, 'owner'))) && Boolean(asAddress(getOwn(message, 'spender'))) &&
+    isUnsignedValue(getOwn(message, 'value')) && isUnsignedValue(getOwn(message, 'deadline'))) {
     return 'erc20-permit';
   }
   const isOrderAssetLike = (item: unknown): boolean =>
     isRecord(item) && (
-      asAddress(item.token) !== undefined ||
-      item.itemType !== undefined ||
-      item.startAmount !== undefined ||
-      item.endAmount !== undefined ||
-      item.identifierOrCriteria !== undefined
+      asAddress(getOwn(item, 'token')) !== undefined ||
+      getOwn(item, 'itemType') !== undefined ||
+      getOwn(item, 'startAmount') !== undefined ||
+      getOwn(item, 'endAmount') !== undefined ||
+      getOwn(item, 'identifierOrCriteria') !== undefined
     );
 
-  if (Array.isArray(message.offer) && message.offer.length > 0 &&
-    message.offer.every(isOrderAssetLike) &&
-    Array.isArray(message.consideration) &&
-    message.consideration.every(isRecord) &&
+  const offer = getOwn(message, 'offer');
+  const consideration = getOwn(message, 'consideration');
+  if (Array.isArray(offer) && offer.length > 0 &&
+    offer.every(isOrderAssetLike) &&
+    Array.isArray(consideration) &&
+    consideration.every(isRecord) &&
     (!type || /order/.test(type))) {
     return 'nft-order';
   }

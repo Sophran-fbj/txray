@@ -656,10 +656,14 @@ describe('Safe MultiSend 与 Universal Router 容器解码', () => {
       ],
       deadline,
     );
-    const result = buildCallTree({ to: ADDR.universalRouter, data }, { nowMs: FIXED_NOW_MS });
+    const result = buildCallTree(
+      { to: ADDR.universalRouter, data },
+      { chainId: 1, nowMs: FIXED_NOW_MS },
+    );
 
     expect(result.root.container?.kind).toBe('uniswap-universal-router-deadline');
     expect(result.root.container?.identification).toBe('canonical-address-and-abi');
+    expect(result.root.container?.version).toBe('v1.2');
     expect(result.root.children).toHaveLength(4);
     expect(result.root.children[0]).toMatchObject({
       functionName: 'PERMIT2_PERMIT',
@@ -682,39 +686,102 @@ describe('Safe MultiSend 与 Universal Router 容器解码', () => {
     });
   });
 
-  it('decodes 0x10 as V4_SWAP only on Universal Router v2 and leaves it unknown on v1.2 or unknown targets', () => {
+  it('scopes Universal Router version and 0x10 V4_SWAP decoding by (chainId, address)', () => {
     const v4Payload = encodeAbiParameters(
       parseAbiParameters('bytes actions, bytes[] params'),
       ['0x00', ['0x1234']],
     );
     const data = encodeUniversalRouterExecute([{ commandByte: 0x10, input: v4Payload }]);
+    const mainnetV2 = '0x66a9893cc07d91d95644aedd05d03f95e1dba8af';
+    const arbitrumV2 = '0xa51afafe0263b40edaef0df8781ea9aa03e381a3';
+    const mainnetV1ArbitrumUnsupported = '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b';
 
-    const v2Result = buildCallTree(
-      { to: '0x66a9893cC07D91D95644AEDD05D03f95e1dba8af', data },
-      { nowMs: FIXED_NOW_MS },
+    // 1. Mainnet v2 address works on Ethereum (chainId 1), not on Arbitrum (42161) or without chainId.
+    const v2Mainnet = buildCallTree(
+      { to: mainnetV2, data },
+      { chainId: 1, nowMs: FIXED_NOW_MS },
     );
-    expect(v2Result.root.container?.version).toBe('v2');
-    expect(v2Result.root.children[0]).toMatchObject({
+    expect(v2Mainnet.root.container).toMatchObject({
+      identification: 'canonical-address-and-abi',
+      version: 'v2',
+    });
+    expect(v2Mainnet.root.children[0]).toMatchObject({
       functionName: 'V4_SWAP',
       decodeStatus: 'decoded',
     });
 
-    const v12Result = buildCallTree({ to: ADDR.universalRouter, data }, { nowMs: FIXED_NOW_MS });
-    expect(v12Result.root.container?.version).toBe('v1.2');
-    expect(v12Result.root.children[0]).toMatchObject({
+    const v2WrongChain = buildCallTree(
+      { to: mainnetV2, data },
+      { chainId: 42161, nowMs: FIXED_NOW_MS },
+    );
+    expect(v2WrongChain.root.container).toMatchObject({
+      identification: 'selector-and-abi-shape',
+      note: 'universal-router-address-unknown',
+    });
+    expect(v2WrongChain.root.container?.version).toBeUndefined();
+    expect(v2WrongChain.root.children[0]).toMatchObject({
       decodeStatus: 'unknown',
       selector: '0x10',
     });
-    expect(v12Result.root.children[0].riskFindings.map((f) => f.code)).toContain(
+
+    const v2NoChain = buildCallTree({ to: mainnetV2, data }, { nowMs: FIXED_NOW_MS });
+    expect(v2NoChain.root.container?.version).toBeUndefined();
+    expect(v2NoChain.root.children[0]).toMatchObject({
+      decodeStatus: 'unknown',
+      selector: '0x10',
+    });
+
+    // 2. Arbitrum v2 address decodes V4_SWAP on chainId 42161.
+    const v2Arbitrum = buildCallTree(
+      { to: arbitrumV2, data },
+      { chainId: 42161, nowMs: FIXED_NOW_MS },
+    );
+    expect(v2Arbitrum.root.container).toMatchObject({
+      identification: 'canonical-address-and-abi',
+      version: 'v2',
+    });
+    expect(v2Arbitrum.root.children[0]).toMatchObject({
+      functionName: 'V4_SWAP',
+      decodeStatus: 'decoded',
+    });
+
+    // 3. 0xef1c6e... is canonical v1 on Ethereum (0x10 stays unknown), and UnsupportedProtocol on Arbitrum.
+    const v1Mainnet = buildCallTree(
+      { to: mainnetV1ArbitrumUnsupported, data },
+      { chainId: 1, nowMs: FIXED_NOW_MS },
+    );
+    expect(v1Mainnet.root.container).toMatchObject({
+      identification: 'canonical-address-and-abi',
+      version: 'v1',
+    });
+    expect(v1Mainnet.root.children[0]).toMatchObject({
+      decodeStatus: 'unknown',
+      selector: '0x10',
+    });
+
+    const v1OnArbitrum = buildCallTree(
+      { to: mainnetV1ArbitrumUnsupported, data },
+      { chainId: 42161, nowMs: FIXED_NOW_MS },
+    );
+    expect(v1OnArbitrum.root.container).toMatchObject({
+      identification: 'selector-and-abi-shape',
+      note: 'universal-router-address-unknown',
+    });
+    expect(v1OnArbitrum.root.container?.version).toBeUndefined();
+
+    // 4. v1.2 on Ethereum does not decode 0x10 as V4_SWAP.
+    const v12Mainnet = buildCallTree(
+      { to: ADDR.universalRouter, data },
+      { chainId: 1, nowMs: FIXED_NOW_MS },
+    );
+    expect(v12Mainnet.root.container?.version).toBe('v1.2');
+    expect(v12Mainnet.root.children[0]).toMatchObject({
+      decodeStatus: 'unknown',
+      selector: '0x10',
+    });
+    expect(v12Mainnet.root.children[0].riskFindings.map((f) => f.code)).toContain(
       'unknown-selector',
     );
-
-    const unknownResult = buildCallTree({ to: null, data }, { nowMs: FIXED_NOW_MS });
-    expect(unknownResult.root.container?.version).toBeUndefined();
-    expect(unknownResult.root.children[0]).toMatchObject({
-      decodeStatus: 'unknown',
-      selector: '0x10',
-    });
   });
 });
 
