@@ -10,6 +10,7 @@ import { AppShell } from '@/components/AppShell';
 import { CopyButton } from '@/components/CopyButton';
 import { WalletButton } from '@/components/WalletButton';
 import { useApprovals } from '@/features/txray/approvals/useApprovals';
+import { useAccountDelegation } from '@/features/txray/approvals/useAccountDelegation';
 import { useSpenderRisk } from '@/features/txray/approvals/useSpenderRisk';
 import {
   DEMO_OWNER,
@@ -21,6 +22,7 @@ import {
   TXRAY_CHAINS,
   getTxRayChain,
   isSupportedTxRayChain,
+  explorerAddressUrl,
   explorerTxUrl,
 } from '@/features/txray/chains/chains';
 import { useTokenPrices } from '@/features/txray/approvals/useTokenPrices';
@@ -120,6 +122,8 @@ function ApprovalsContent() {
   }, [demoMode, selectedChainId, trimmed, target]);
 
   const approvalsQuery = useApprovals(demoMode ? undefined : target, effectiveChainId);
+  const delegationQuery = useAccountDelegation(demoMode ? undefined : target, effectiveChainId);
+  const delegation = demoMode ? undefined : delegationQuery.data;
   const scanResult = demoMode
     ? { approvals: demoApprovals, status: 'complete' as const, warnings: [] }
     : approvalsQuery.data;
@@ -131,16 +135,23 @@ function ApprovalsContent() {
   const verifiedRevocation = !demoMode && lastRevocation?.chainId === effectiveChainId &&
     lastRevocation.owner.toLowerCase() === target?.toLowerCase() ? lastRevocation : undefined;
 
-  // 唯一 spender 列表 → 风险画像
-  const spenders = useMemo(
-    () => (approvals ? Array.from(new Set(approvals.map((a) => a.spender))) : []),
-    [approvals],
-  );
+  // 唯一 spender 列表（包含 EIP-7702 委托目标合约）→ 风险画像
+  const spenders = useMemo(() => {
+    const list = approvals ? approvals.map((a) => a.spender) : [];
+    if (delegation?.status === 'delegated') {
+      list.push(delegation.delegate);
+    }
+    return Array.from(new Set(list));
+  }, [approvals, delegation]);
   const {
     data: liveRiskMap,
     isError: isRiskError,
   } = useSpenderRisk(demoMode ? [] : spenders, effectiveChainId);
   const riskMap = demoMode ? demoRiskMap : liveRiskMap;
+  const delegateRisk =
+    delegation?.status === 'delegated'
+      ? riskMap?.[delegation.delegate.toLowerCase()]
+      : undefined;
   const threatStatuses = Object.values(liveRiskMap ?? {}).map((risk) => risk.threat);
   const checkedThreats = threatStatuses.filter((threat) => threat.status === 'available');
   const threatStatus = checkedThreats[0];
@@ -182,8 +193,9 @@ function ApprovalsContent() {
   const showPriceNotice =
     tokenPriceResult?.coverage.status === 'unavailable' ||
     tokenPriceResult?.coverage.status === 'partial';
+  const showDelegationUnavailable = !demoMode && delegation?.status === 'unavailable';
   const hasCoverageDetails =
-    isRiskError || showThreatPartial || showThreatCoverage || showPriceNotice;
+    isRiskError || showThreatPartial || showThreatCoverage || showPriceNotice || showDelegationUnavailable;
 
   const filterPills: Array<{
     key: ApprovalFilter;
@@ -302,6 +314,16 @@ function ApprovalsContent() {
               {!trimmed && connected && (
                 <span className="badge badge-sm">{t.approvals.connectedWallet}</span>
               )}
+              {delegation?.status === 'eoa' && (
+                <span className="badge badge-ghost badge-sm text-base-content/70">
+                  {t.approvals.eip7702.cleanStatus}
+                </span>
+              )}
+              {delegation?.status === 'contract' && (
+                <span className="badge badge-ghost badge-sm text-base-content/70">
+                  {t.approvals.eip7702.contractStatus}
+                </span>
+              )}
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2 text-base-content/75">
@@ -316,6 +338,64 @@ function ApprovalsContent() {
 
       {target && (
         <div className="mt-6">
+          {delegation?.status === 'delegated' && (
+            <section
+              aria-label={t.approvals.eip7702.detectedTitle}
+              className={`mb-4 rounded-box border p-4 text-sm ${
+                !isRiskError && delegateRisk?.level === 'known'
+                  ? 'border-warning/60 bg-warning/10'
+                  : 'border-error/60 bg-error/10'
+              }`}
+              data-testid="eip7702-delegation-alert"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-base-content">
+                  {t.approvals.eip7702.detectedTitle}
+                </span>
+                {delegateRisk && (
+                  <span
+                    className={`badge badge-sm ${
+                      delegateRisk.level === 'malicious' || delegateRisk.level === 'eoa'
+                        ? 'badge-error'
+                        : delegateRisk.level === 'known'
+                          ? 'badge-success'
+                          : 'badge-warning'
+                    }`}
+                  >
+                    {delegateRisk.level === 'malicious'
+                      ? t.approvals.riskMalicious
+                      : delegateRisk.level === 'known'
+                        ? delegateRisk.labelName
+                        : delegateRisk.level === 'new'
+                          ? t.approvals.riskNew
+                          : t.approvals.riskUnknown}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 text-xs leading-5 text-base-content/80">
+                {t.approvals.eip7702.detectedDescription}
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-base-content/70">{t.approvals.eip7702.delegateLabel}:</span>
+                <a
+                  href={explorerAddressUrl(effectiveChainId, delegation.delegate)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="link link-hover break-all font-mono text-primary"
+                >
+                  {delegation.delegate}
+                </a>
+                <CopyButton value={delegation.delegate} label={t.approvals.eip7702.delegateLabel} />
+                <Link
+                  href="/articles/eip-7702-delegated-eoa-risk"
+                  className="link ml-auto font-medium text-primary"
+                >
+                  {t.approvals.eip7702.learnMore} →
+                </Link>
+              </div>
+            </section>
+          )}
+
           {verifiedRevocation && (
             <div className="alert alert-success mb-4 text-sm" role="status">
               <span>{t.approvals.revokedNotice(verifiedRevocation.symbol)}</span>
@@ -433,6 +513,11 @@ function ApprovalsContent() {
               className="mb-4 space-y-1.5 rounded-box border border-base-300 bg-base-200/70 px-4 py-3 text-xs"
               aria-label={t.approvals.summary.scanHealthTitle}
             >
+              {showDelegationUnavailable && (
+                <p className="text-warning" role="status">
+                  ⚠ {t.approvals.eip7702.unavailableNotice}
+                </p>
+              )}
               {isRiskError && (
                 <p className="text-warning" role="alert">
                   ⚠ {t.approvals.riskUnavailable}

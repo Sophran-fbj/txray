@@ -252,6 +252,70 @@ export const articles: Article[] = [
       },
     ],
   },
+  {
+    slug: 'eip-7702-delegated-eoa-risk',
+    title: {
+      zh: '什么是 EIP-7702 账户委托：为什么授权列表干净也会被盗',
+      en: 'EIP-7702 Delegated EOAs: Why Clean Approval Lists Can Still Drain Wallets',
+    },
+    description: {
+      zh: 'Pectra 升级引入 EIP-7702 后，普通钱包（EOA）可以通过签名委托指向合约代码。传统授权检查看不到这层控制权。',
+      en: 'After Pectra introduced EIP-7702, an EOA can sign an authorization pointing its code to a contract. Traditional approval scanners do not show that delegation.',
+    },
+    date: '2026-11-24',
+    tags: ['EIP-7702', 'EOA', 'Security'],
+    relatedTools: [
+      {
+        label: { zh: '在授权检查页排查 EIP-7702 委托', en: 'Check EIP-7702 delegation in Approvals' },
+        href: '/tools/txray/approvals',
+      },
+      {
+        label: { zh: '用交易解码查看批量调用', en: 'Inspect batch calls in Decoder' },
+        href: '/tools/txray/decoder',
+      },
+    ],
+    sections: [
+      {
+        heading: { zh: '0xef0100 委托字节码是什么', en: 'What the 0xef0100 Designator Bytecode Means' },
+        body: [
+          {
+            zh: '在 EIP-7702 之前，普通外部账户（EOA）在链上的字节码（eth_getCode）永远是空的 0x。引入 EIP-7702 后，EOA 可以签署一条授权元组，把自己的代码槽位设置成 23 字节的委托指示符：0xef0100 加上 20 字节目标合约地址。',
+            en: 'Before EIP-7702, an externally owned account (EOA) always had empty bytecode (0x). Under EIP-7702, an EOA can sign an authorization tuple that sets its code slot to a 23-byte designator: 0xef0100 followed by a 20-byte contract address.',
+          },
+          {
+            zh: '此后，任何发往该 EOA 或由中继器触发的调用，都会在 EOA 自身上下文中执行被委托合约的逻辑——不需要任何 ERC-20 approve。',
+            en: 'Once delegated, calls targeting that EOA execute the delegate contract code inside the EOA’s own authority context—no separate ERC-20 approve is required.',
+          },
+        ],
+      },
+      {
+        heading: { zh: '为什么传统授权检查工具漏掉了它', en: 'Why Traditional Approval Checkers Miss It' },
+        body: [
+          {
+            zh: '传统授权工具只扫描 ERC-20 Approval、ERC-721 ApprovalForAll 和 Permit2 事件。如果攻击者诱导你签了一笔 EIP-7702 委托授权（例如伪装成 Gas 补贴、一键批量领取空投），你的传统授权列表可以完全是空的，甚至看起来“非常安全”。',
+            en: 'Traditional scanners only inspect ERC-20 Approval, ERC-721 ApprovalForAll, and Permit2 logs. If a phisher tricks you into signing an EIP-7702 authorization disguised as gas sponsorship or batch claiming, your approval table can look completely clean.',
+          },
+          {
+            zh: '不少链上自动清扫机器人（auto-sweeper）正是把地址委托给恶意中继合约：只要地址转入 ETH 或新代币，就能在同一个区块里被转走。',
+            en: 'Auto-sweeper drainers rely on exactly this mechanism: as soon as ETH or tokens arrive at the compromised EOA, the delegated logic forwards them out.',
+          },
+        ],
+      },
+      {
+        heading: { zh: '如何排查与安全处理', en: 'How to Inspect and Clear a Delegation' },
+        body: [
+          {
+            zh: '在 TxRay 授权检查页输入地址时，系统会同时读取该地址在所选网络上的字节码，检测是否存在 0xef0100 委托，并用同一套恶意情报与合约风险画像核验目标合约。',
+            en: 'When you inspect an address in TxRay Approvals, it also queries onchain bytecode on the selected network to flag 0xef0100 delegations and evaluates the delegate against threat intelligence and contract labels.',
+          },
+          {
+            zh: '如果发现来历不明的委托合约，应立即停止向该地址转入资金，并通过受信任的钱包把 EIP-7702 委托重置回零地址（0x0000000000000000000000000000000000000000）；若私钥或助记词疑似泄露，应把剩余资产迁往全新地址。',
+            en: 'If you see an unrecognized delegate contract, stop funding the address immediately and clear the EIP-7702 delegation back to the zero address (0x0000000000000000000000000000000000000000) using a trusted wallet—or migrate remaining funds to a fresh wallet if key compromise is suspected.',
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 export function getArticle(slug: string): Article | undefined {

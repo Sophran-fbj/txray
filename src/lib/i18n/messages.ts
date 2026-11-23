@@ -187,6 +187,15 @@ export const messages = {
         filterShortAttention: '需关注',
         filterShortBroad: '宽泛额度',
       },
+      eip7702: {
+        detectedTitle: '⚠ 检测到 EIP-7702 账户委托',
+        detectedDescription: '该普通钱包（EOA）当前通过 EIP-7702 委托了智能合约代码；即使传统 ERC-20/NFT 授权列表为空，被委托合约也可能直接执行该账户操作或自动转走资产。',
+        delegateLabel: '被委托合约',
+        learnMore: '了解 EIP-7702 委托风险与清除方法',
+        unavailableNotice: '无法通过 RPC 读取账户字节码（EIP-7702 委托状态未知；未知不代表未委托）。',
+        cleanStatus: '未检测到 EIP-7702 委托',
+        contractStatus: '合约账户（非普通 EOA）',
+      },
     },
     decoder: {
       title: '交易解码',
@@ -702,6 +711,15 @@ export const messages = {
         filterShortAll: 'All',
         filterShortAttention: 'Attention',
         filterShortBroad: 'Broad',
+      },
+      eip7702: {
+        detectedTitle: '⚠ EIP-7702 account delegation detected',
+        detectedDescription: 'This EOA currently delegates execution to smart-contract code via EIP-7702. Even if traditional ERC-20/NFT approvals look empty, the delegate contract may control account actions.',
+        delegateLabel: 'Delegate contract',
+        learnMore: 'Learn how EIP-7702 delegation works and how to clear it',
+        unavailableNotice: 'Could not read account bytecode via RPC (EIP-7702 delegation status is unknown; unknown does not mean undelegated).',
+        cleanStatus: 'No EIP-7702 delegation',
+        contractStatus: 'Contract account',
       },
     },
     decoder: {
