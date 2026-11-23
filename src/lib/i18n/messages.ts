@@ -437,6 +437,13 @@ export const messages = {
       idle:
         '粘贴 signTypedData 内容，或点击示例，再运行分析查看危险授权。',
       analyze: '分析',
+      clear: '清空',
+      resultTitle: '风险分析结果',
+      whatWeCheck: [
+        '识别 ERC-20 Permit、Permit2 持续授权与 NFT 订单结构',
+        '标出无限额度（max uint）与长期或已过期的截止时间',
+        '提取 spender、operator、conduit 等关键权限地址',
+      ],
       failed: '签名分析失败',
       domain: 'Domain',
       primaryType: 'Primary type',
@@ -942,6 +949,13 @@ export const messages = {
       idle:
         'Paste a signTypedData payload, or click a sample, then run analysis to inspect risky approvals.',
       analyze: 'Analyze',
+      clear: 'Clear',
+      resultTitle: 'Risk analysis',
+      whatWeCheck: [
+        'Classifies ERC-20 Permit, Permit2 standing allowances, and NFT orders',
+        'Flags unlimited amounts (max uint) and distant or expired deadlines',
+        'Surfaces high-impact addresses like spender, operator, and conduit',
+      ],
       failed: 'Failed to analyze signature',
       domain: 'Domain',
       primaryType: 'Primary type',

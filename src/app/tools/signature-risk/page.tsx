@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { AppearanceControls } from '@/components/AppearanceControls';
-import { WalletButton } from '@/components/WalletButton';
+import { AppShell } from '@/components/AppShell';
+import { CopyButton } from '@/components/CopyButton';
 import { useI18n } from '@/lib/i18n/provider';
 import {
   analyzeTypedData,
@@ -124,108 +123,124 @@ export default function SignaturePage() {
   }
 
   return (
-    <main className="min-h-screen bg-base-100 px-6 py-12">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link
-              href="/"
-              className="text-sm text-base-content/60 hover:text-base-content"
-            >
-              ← {t.common.backHome}
-            </Link>
-            <h1 className="mt-2 text-3xl font-bold text-primary">
-              {copy.title}
-            </h1>
-            <p className="mt-1 text-sm text-base-content/60">{copy.desc}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <AppearanceControls />
-            <WalletButton />
-          </div>
+    <AppShell maxWidth="5xl">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">
+          {copy.title}
+        </h1>
+        <p className="mt-1 text-sm text-base-content/70">{copy.desc}</p>
+      </div>
+
+      <div className="alert alert-warning mt-5 text-sm">
+        <span>{copy.readonly}</span>
+      </div>
+
+      <details className="collapse-arrow collapse mt-3 border border-base-300 bg-base-200 text-sm">
+        <summary className="collapse-title font-medium">{copy.howToGetTitle}</summary>
+        <div className="collapse-content space-y-2 text-base-content/75">
+          <p>{copy.howToGet}</p>
+          <p>{copy.cannotReadPopup}</p>
         </div>
+      </details>
 
-        <div className="alert alert-warning mt-8 text-sm">
-          <span>{copy.readonly}</span>
-        </div>
-
-        <details className="collapse-arrow collapse mt-4 bg-base-200 text-sm">
-          <summary className="collapse-title font-medium">{copy.howToGetTitle}</summary>
-          <div className="collapse-content space-y-2 text-base-content/70">
-            <p>{copy.howToGet}</p>
-            <p>{copy.cannotReadPopup}</p>
-          </div>
-        </details>
-
-        <div className="form-control mt-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="label" htmlFor="typed-data-input">
-              <span className="label-text">{copy.inputLabel}</span>
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="link link-primary text-xs"
-                onClick={() => loadSample(EXAMPLE_PERMIT)}
-              >
-                {copy.permitSample}
-              </button>
-              <button
-                type="button"
-                className="link link-secondary text-xs"
-                onClick={() => loadSample(EXAMPLE_PERMIT2)}
-              >
-                {copy.permit2Sample}
-              </button>
+      <div className="mt-6 grid gap-6 lg:grid-cols-12 lg:items-start">
+        <section className="rounded-box border border-base-300 bg-base-200 p-4 sm:p-5 lg:col-span-5">
+          <div className="form-control">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="label py-1" htmlFor="typed-data-input">
+                <span className="label-text text-xs font-medium">{copy.inputLabel}</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs border border-base-300 text-primary"
+                  onClick={() => loadSample(EXAMPLE_PERMIT)}
+                >
+                  {copy.permitSample}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs border border-base-300 text-secondary"
+                  onClick={() => loadSample(EXAMPLE_PERMIT2)}
+                >
+                  {copy.permit2Sample}
+                </button>
+              </div>
             </div>
+            <textarea
+              id="typed-data-input"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setResult({ status: 'idle' });
+              }}
+              placeholder={copy.placeholder}
+              className="textarea textarea-bordered mt-1 min-h-64 w-full break-all font-mono text-xs lg:min-h-80"
+              spellCheck={false}
+              aria-describedby="typed-data-help"
+            />
+            <p id="typed-data-help" className="mt-2 text-xs text-base-content/70">
+              {copy.inputHelp}
+            </p>
           </div>
-          <textarea
-            id="typed-data-input"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setResult({ status: 'idle' });
-            }}
-            placeholder={copy.placeholder}
-            className="textarea textarea-bordered min-h-72 w-full break-all font-mono text-xs"
-            spellCheck={false}
-            aria-describedby="typed-data-help"
-          />
-          <p id="typed-data-help" className="mt-2 text-xs text-base-content/70">
-            {copy.inputHelp}
-          </p>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => runAnalysis(input)}
-          >
-            {copy.analyze}
-          </button>
-        </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {input.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setInput('');
+                  setResult({ status: 'idle' });
+                }}
+              >
+                {copy.clear}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => runAnalysis(input)}
+            >
+              {copy.analyze}
+            </button>
+          </div>
+        </section>
 
-        <div className="mt-6">
+        <section className="lg:col-span-7" aria-live="polite">
           {result.status === 'idle' && (
-            <div className="card bg-base-200">
-              <div className="card-body text-sm text-base-content/60">
-                {copy.idle}
+            <div className="card border border-base-300 bg-base-200">
+              <div className="card-body gap-3 p-5">
+                <h2 className="text-base font-semibold text-base-content">
+                  {copy.resultTitle}
+                </h2>
+                <p className="text-sm text-base-content/70">{copy.idle}</p>
+                <ul className="mt-1 space-y-1.5 border-t border-base-300/70 pt-3 text-xs text-base-content/75">
+                  {copy.whatWeCheck.map((item) => (
+                    <li key={item} className="flex items-start gap-2">
+                      <span className="text-primary" aria-hidden="true">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           )}
           {result.status === 'error' && (
-            <div className="alert alert-error text-sm" role="alert">{result.error}</div>
+            <div className="alert alert-error text-sm" role="alert">
+              {result.error}
+            </div>
           )}
           {result.status === 'ok' && <AnalysisView data={result.data} />}
-        </div>
+        </section>
       </div>
-    </main>
+    </AppShell>
   );
 }
 
 function AnalysisView({ data }: { data: SignatureAnalysis }) {
   const { t } = useI18n();
   const copy = t.signatureRisk;
+  const rawMessageJson = JSON.stringify(data.rawMessage, null, 2);
 
   return (
     <div className="space-y-4">
@@ -249,35 +264,36 @@ function AnalysisView({ data }: { data: SignatureAnalysis }) {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <InfoCard label={copy.domain} value={data.domainName ?? copy.unknown} />
-        <InfoCard label={copy.chainId} value={data.chainId ?? copy.notProvided} />
+        <InfoCard label={copy.chainId} value={data.chainId ?? copy.notProvided} mono />
         <InfoCard label={copy.primaryType} value={data.primaryType ?? copy.unknown} />
         <InfoCard
           label={copy.verifyingContract}
           value={data.verifyingContract ?? copy.notProvided}
+          copyValue={data.verifyingContract}
           mono
         />
       </div>
 
-      <div className="card bg-base-200">
-        <div className="card-body">
+      <div className="card border border-base-300 bg-base-200">
+        <div className="card-body p-4 sm:p-5">
           <h2 className="card-title text-lg">{copy.fields}</h2>
           {data.findings.length === 0 ? (
-            <p className="text-sm text-base-content/60">
+            <p className="text-sm text-base-content/65">
               {copy.noFields}
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="table table-sm">
-                <thead>
+            <div className="md:overflow-x-auto">
+              <table className="table table-sm block md:table">
+                <thead className="hidden md:table-header-group">
                   <tr>
                     <th>{copy.field}</th>
                     <th>{copy.value}</th>
                     <th>{copy.why}</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="block space-y-3 md:table-row-group md:space-y-0">
                   {data.findings.map((finding, index) => (
                     <FindingRow finding={finding} key={`${finding.label}-${index}`} />
                   ))}
@@ -288,13 +304,16 @@ function AnalysisView({ data }: { data: SignatureAnalysis }) {
         </div>
       </div>
 
-      <details className="collapse-arrow collapse bg-base-200">
-        <summary className="collapse-title text-sm text-base-content/70">
+      <details className="collapse-arrow collapse border border-base-300 bg-base-200">
+        <summary className="collapse-title text-sm text-base-content/75">
           {copy.rawMessage}
         </summary>
         <div className="collapse-content">
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs text-base-content/60">
-            {JSON.stringify(data.rawMessage, null, 2)}
+          <div className="mb-2 flex justify-end">
+            <CopyButton value={rawMessageJson} label={copy.rawMessage} />
+          </div>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs text-base-content/70">
+            {rawMessageJson}
           </pre>
         </div>
       </details>
@@ -306,19 +325,31 @@ function FindingRow({ finding }: { finding: FieldFinding }) {
   const { t, locale } = useI18n();
   const copy = t.signatureRisk;
   const value = formatFindingValue(finding, locale, copy);
+  const cellClass = 'block px-0 py-1 md:table-cell md:px-3 md:py-2.5';
 
   return (
-    <tr>
-      <td>
+    <tr className="block rounded-box border border-base-300 bg-base-100/50 p-3 md:table-row md:border-0 md:bg-transparent md:p-0">
+      <td className={cellClass}>
+        <div className="mb-1 text-[11px] font-semibold uppercase text-base-content/60 md:hidden">
+          {copy.field}
+        </div>
         <span className={`badge badge-sm ${badgeClass(finding.severity)}`}>
           {copy.findingLabels[finding.kind]}
         </span>
         {finding.path && (
-          <div className="mt-1 font-mono text-xs text-base-content/50">{finding.path}</div>
+          <div className="mt-1 font-mono text-xs text-base-content/55">{finding.path}</div>
         )}
       </td>
-      <td className="max-w-sm break-all font-mono text-xs">{value}</td>
-      <td className="text-sm text-base-content/70">
+      <td className={`${cellClass} max-w-sm break-all font-mono text-xs tabular-nums`}>
+        <div className="mb-1 font-sans text-[11px] font-semibold uppercase text-base-content/60 md:hidden">
+          {copy.value}
+        </div>
+        {value}
+      </td>
+      <td className={`${cellClass} text-sm text-base-content/75`}>
+        <div className="mb-1 text-[11px] font-semibold uppercase text-base-content/60 md:hidden">
+          {copy.why}
+        </div>
         {finding.kind === 'amount' && finding.severity === 'high'
           ? `${copy.findingExplains.amount} ${copy.findingExplains.amountUnlimited}`
           : copy.findingExplains[finding.kind]}
@@ -343,17 +374,24 @@ function formatFindingValue(
 function InfoCard({
   label,
   value,
+  copyValue,
   mono,
 }: {
   label: string;
   value: string;
+  copyValue?: string;
   mono?: boolean;
 }) {
   return (
-    <div className="card bg-base-200">
-      <div className="card-body gap-1 p-4">
-        <div className="text-xs text-base-content/50">{label}</div>
-        <div className={mono ? 'break-all font-mono text-xs' : 'text-sm'}>{value}</div>
+    <div className="card border border-base-300 bg-base-200">
+      <div className="card-body gap-1 p-3.5">
+        <div className="text-xs text-base-content/55">{label}</div>
+        <div className="flex items-start justify-between gap-1">
+          <div className={mono ? 'break-all font-mono text-xs tabular-nums' : 'text-sm font-medium'}>
+            {value}
+          </div>
+          {copyValue && <CopyButton value={copyValue} label={label} />}
+        </div>
       </div>
     </div>
   );
