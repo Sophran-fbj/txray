@@ -10,6 +10,7 @@ export const messages = {
       primaryNav: '主导航',
       copy: '复制',
       copied: '已复制',
+      whyRisky: '为什么危险？',
       nav: {
         approvals: '授权检查',
         decoder: '交易解码',
@@ -520,6 +521,7 @@ export const messages = {
       primaryNav: 'Primary navigation',
       copy: 'Copy',
       copied: 'Copied',
+      whyRisky: 'Why risky?',
       nav: {
         approvals: 'Approvals',
         decoder: 'Decoder',

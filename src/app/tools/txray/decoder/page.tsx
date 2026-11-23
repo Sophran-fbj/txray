@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { getAddress, isAddress } from 'viem';
 import { AppShell } from '@/components/AppShell';
 import { CopyButton } from '@/components/CopyButton';
@@ -384,6 +385,14 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
               <span className="mr-1 font-bold">{t.decoder.caution}</span>
             )}
             {t.decoder.knownExplains[data.explainKey]}
+            {explainArticleHref(data.explainKey) && (
+              <Link
+                href={explainArticleHref(data.explainKey)!}
+                className="link ml-2 font-medium"
+              >
+                {t.common.whyRisky} →
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -505,6 +514,21 @@ function ParamRow({
       </td>
     </tr>
   );
+}
+
+function explainArticleHref(key: DecodedResult['explainKey']): string | undefined {
+  switch (key) {
+    case 'permit':
+      return '/articles/permit2-eip712-phishing';
+    case 'approve':
+    case 'approveZeroAmbiguous':
+    case 'erc20Approval':
+    case 'approvalForAll':
+    case 'nftTokenApproval':
+      return '/articles/why-unlimited-approval-is-dangerous';
+    default:
+      return undefined;
+  }
 }
 
 function AddressLink({ address, chainId, label }: { address: string; chainId: number; label?: string }) {

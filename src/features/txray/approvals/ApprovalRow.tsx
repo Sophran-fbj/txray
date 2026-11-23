@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { Address } from 'viem';
 import type { Approval } from './types';
 import { getApprovalScope } from './approvalScope';
@@ -47,6 +48,17 @@ export function ApprovalRow({
   });
   const needsCheck = transaction.status === 'unverified' || transaction.status === 'receipt-unavailable';
   const scope = getApprovalScope(approval);
+  const showExplainArticle =
+    scope === 'max' ||
+    scope === 'large' ||
+    approval.kind === 'nft' ||
+    approval.kind === 'permit2' ||
+    risk?.level === 'eoa' ||
+    risk?.level === 'malicious';
+  const explainHref =
+    approval.kind === 'permit2'
+      ? '/articles/permit2-eip712-phishing'
+      : '/articles/why-unlimited-approval-is-dangerous';
   const confirmationMessage = transaction.status === 'still-active' || transaction.status === 'unverified' ||
     transaction.status === 'receipt-unavailable' || transaction.status === 'replaced' || transaction.status === 'reverted'
     ? t.approvals.revokeStatuses[transaction.status]
@@ -100,6 +112,16 @@ export function ApprovalRow({
             </a>{' '}
             · {t.approvals.threatSourceDelay(risk.threat.publicDelayDays)}
             {risk.threat.stale && ` · ${t.approvals.threatSourceStale}`}
+          </div>
+        )}
+        {showExplainArticle && (
+          <div className="mt-1">
+            <Link
+              href={explainHref}
+              className="link link-hover text-xs text-primary/90"
+            >
+              {t.common.whyRisky} →
+            </Link>
           </div>
         )}
       </td>

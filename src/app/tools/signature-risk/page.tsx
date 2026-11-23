@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { CopyButton } from '@/components/CopyButton';
 import { useI18n } from '@/lib/i18n/provider';
@@ -257,6 +258,16 @@ function AnalysisView({ data }: { data: SignatureAnalysis }) {
             {data.permit2Mode === 'transfer'
               ? copy.riskExplains.permit2Transfer
               : riskExplain(t, data.riskKind)}
+            {(data.riskKind === 'erc20-permit' ||
+              data.riskKind === 'permit2' ||
+              data.riskKind === 'nft-order') && (
+              <Link
+                href="/articles/permit2-eip712-phishing"
+                className="link ml-2 font-medium"
+              >
+                {t.common.whyRisky} →
+              </Link>
+            )}
             {data.signatureExpired && (
               <p className="mt-2">{copy.expiredExplain}</p>
             )}
