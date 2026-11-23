@@ -8,7 +8,8 @@ test('theme switches in one click and survives navigation and reload', async ({ 
   await page.getByRole('button', { name: '切换到暖砂主题' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'sandstone');
 
-  await page.getByRole('link', { name: /TxRay 可用/ }).click();
+  await page.getByRole('link', { name: /授权检查/ }).first().click();
+  await expect(page).toHaveURL(/\/tools\/txray\/approvals/);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'sandstone');
 
   await page.reload();

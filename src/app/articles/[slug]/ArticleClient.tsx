@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AppearanceControls } from '@/components/AppearanceControls';
+import { AppShell } from '@/components/AppShell';
 import { pickText, type Article } from '@/content/articles';
 import { useI18n } from '@/lib/i18n/provider';
 
@@ -9,18 +9,15 @@ export function ArticleClient({ article }: { article: Article }) {
   const { locale, t } = useI18n();
 
   return (
-    <main className="min-h-screen bg-base-100 px-6 py-12">
-      <article className="mx-auto max-w-3xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link
-              href="/articles"
-              className="text-sm text-base-content/60 hover:text-base-content"
-            >
-              ← {t.common.articles}
-            </Link>
-          </div>
-          <AppearanceControls />
+    <AppShell maxWidth="3xl">
+      <article>
+        <div>
+          <Link
+            href="/articles"
+            className="text-sm text-base-content/65 hover:text-base-content"
+          >
+            ← {t.common.articles}
+          </Link>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -31,23 +28,23 @@ export function ArticleClient({ article }: { article: Article }) {
           ))}
         </div>
 
-        <h1 className="mt-3 text-4xl font-bold leading-tight text-primary">
+        <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-primary sm:text-4xl">
           {pickText(article.title, locale)}
         </h1>
-        <p className="mt-3 text-base text-base-content/70">
+        <p className="mt-3 text-base leading-7 text-base-content/75">
           {pickText(article.description, locale)}
         </p>
-        <p className="mt-2 text-xs text-base-content/50">{article.date}</p>
+        <p className="mt-2 text-xs text-base-content/55">{article.date}</p>
 
-        <div className="mt-10 max-w-none">
+        <div className="mt-8 border-t border-base-300/70 pt-8">
           {article.sections.map((section) => (
             <section className="mb-8" key={section.heading.zh}>
-              <h2 className="mb-3 text-2xl font-semibold">
+              <h2 className="mb-3 text-xl font-semibold sm:text-2xl">
                 {pickText(section.heading, locale)}
               </h2>
               {section.body.map((paragraph) => (
                 <p
-                  className="mb-3 leading-7 text-base-content/80"
+                  className="mb-3 leading-7 text-base-content/85"
                   key={paragraph.zh}
                 >
                   {pickText(paragraph, locale)}
@@ -57,9 +54,9 @@ export function ArticleClient({ article }: { article: Article }) {
           ))}
         </div>
 
-        <div className="card mt-10 bg-base-200">
-          <div className="card-body">
-            <h2 className="card-title text-lg">
+        <div className="card mt-10 border border-base-300 bg-base-200">
+          <div className="card-body p-5">
+            <h2 className="card-title text-base">
               {locale === 'zh' ? '动手试试' : 'Try it'}
             </h2>
             <div className="flex flex-wrap gap-2">
@@ -72,6 +69,6 @@ export function ArticleClient({ article }: { article: Article }) {
           </div>
         </div>
       </article>
-    </main>
+    </AppShell>
   );
 }

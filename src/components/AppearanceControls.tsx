@@ -53,7 +53,7 @@ export function AppearanceControls() {
     <div className="flex shrink-0 items-center justify-end gap-2">
       <svg
         viewBox="0 0 52 52"
-        className="size-12 shrink-0 overflow-visible rounded-full bg-base-200 shadow-[0_2px_12px_rgba(0,0,0,0.16)]"
+        className="size-8 shrink-0 overflow-visible rounded-full border border-base-300 bg-base-200 shadow-sm"
         role="group"
         aria-label={locale === 'zh' ? '切换主题' : 'Switch theme'}
       >

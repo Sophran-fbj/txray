@@ -7,6 +7,15 @@ export const messages = {
       backHome: '返回首页',
       articles: '文章',
       txray: 'TxRay',
+      primaryNav: '主导航',
+      copy: '复制',
+      copied: '已复制',
+      nav: {
+        approvals: '授权检查',
+        decoder: '交易解码',
+        signatureRisk: '签名风险',
+        articles: '原理文章',
+      },
       language: '语言',
       zh: '中文',
       en: 'English',
@@ -15,12 +24,19 @@ export const messages = {
         '本站绝不索要你的助记词或私钥。所有写操作均通过你的钱包签名。',
     },
     home: {
+      badge: '默认只读 · 绝不接触私钥与助记词',
       title: 'TxRay',
       subtitle: 'Web3 授权与交易风险检查器：不只标记风险，还解释为什么危险。',
+      primaryCta: '检查钱包授权',
+      demoCta: '无钱包体验演示',
+      toolsHeading: '安全工具',
       txrayDesc:
         '授权检查 + 交易解码：检测 ERC-20 / NFT / Permit2 授权，标记 spender 风险，并解释危险原因。',
       signatureRiskTitle: 'Signature Risk',
       signatureRiskDesc: 'EIP-712 签名风险解释器：识别 permit、Permit2 和订单签名风险。',
+      articlesHeading: '原理文章',
+      viewAllArticles: '查看全部文章',
+      openTool: '进入工具',
     },
     txray: {
       intro: '给链上操作拍 X 光片：看清授权、看懂交易、看懂签名。',
@@ -473,6 +489,15 @@ export const messages = {
       backHome: 'Back home',
       articles: 'Articles',
       txray: 'TxRay',
+      primaryNav: 'Primary navigation',
+      copy: 'Copy',
+      copied: 'Copied',
+      nav: {
+        approvals: 'Approvals',
+        decoder: 'Decoder',
+        signatureRisk: 'Signature Risk',
+        articles: 'Articles',
+      },
       language: 'Language',
       zh: '中文',
       en: 'English',
@@ -481,14 +506,21 @@ export const messages = {
         'This site never asks for your seed phrase or private key. All write actions are signed in your wallet.',
     },
     home: {
+      badge: 'Read-only by default · Never asks for seed phrases',
       title: 'TxRay',
       subtitle:
         'A web3 approval and transaction risk explorer that explains why each risk matters.',
+      primaryCta: 'Inspect approvals',
+      demoCta: 'Try demo without wallet',
+      toolsHeading: 'Security tools',
       txrayDesc:
         'Approval checks and transaction decoding for ERC-20, NFT, and Permit2 risk analysis.',
       signatureRiskTitle: 'Signature Risk',
       signatureRiskDesc:
         'An EIP-712 signature risk explainer for permit, Permit2, and order-style signatures.',
+      articlesHeading: 'Principle articles',
+      viewAllArticles: 'View all articles',
+      openTool: 'Open tool',
     },
     txray: {
       intro:
