@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { formatUnits, type Address } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { useI18n } from '@/lib/i18n/provider';
+import { CopyButton } from '@/components/CopyButton';
 import { explorerAddressUrl, explorerTxUrl } from '../chains/chains';
 import { readTransactionExecution, type ReceiptEvent } from './transactionExecution';
 import type { DecoderTransaction } from './useDecoder';
@@ -128,15 +129,18 @@ function ExecutionField({ label, children }: { label: string; children: ReactNod
   return (
     <div className="min-w-0 text-xs">
       <dt className="text-base-content/70">{label}</dt>
-      <dd className="break-all font-mono">{children}</dd>
+      <dd className="break-all font-mono tabular-nums">{children}</dd>
     </div>
   );
 }
 
 function ExecutionAddress({ address, chainId }: { address: Address; chainId: number }) {
   return (
-    <a className="link link-hover" href={explorerAddressUrl(chainId, address)} target="_blank" rel="noopener noreferrer">
-      {address}
-    </a>
+    <span className="inline-flex max-w-full flex-wrap items-center gap-1">
+      <a className="link link-hover" href={explorerAddressUrl(chainId, address)} target="_blank" rel="noopener noreferrer">
+        {address}
+      </a>
+      <CopyButton value={address} />
+    </span>
   );
 }

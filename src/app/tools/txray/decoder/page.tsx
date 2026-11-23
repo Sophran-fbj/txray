@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { getAddress, isAddress } from 'viem';
+import { AppShell } from '@/components/AppShell';
+import { CopyButton } from '@/components/CopyButton';
 import { WalletButton } from '@/components/WalletButton';
-import { AppearanceControls } from '@/components/AppearanceControls';
 import {
   isMaxUintValue,
   isTxHash,
@@ -28,6 +28,9 @@ import {
   NESTED_MULTICALL_EXAMPLE,
 } from '@/features/txray/decoder/examples';
 
+const LONG_VALUE_THRESHOLD = 160;
+const LONG_VALUE_PREVIEW = 120;
+
 export default function DecoderPage() {
   const { t } = useI18n();
   const [mode, setMode] = useState<DecoderInputMode>('tx');
@@ -46,170 +49,216 @@ export default function DecoderPage() {
   const showResult = inputValid;
 
   return (
-    <main className="min-h-screen bg-base-100 px-4 py-8 sm:px-6 sm:py-12">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <Link
-              href="/tools/txray"
-              className="rounded-sm text-sm text-base-content/70 hover:text-base-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+    <AppShell maxWidth="5xl" headerRight={<WalletButton />} footerNote={t.decoder.readonly}>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">
+          {t.decoder.title}
+        </h1>
+        <p className="mt-1 text-sm text-base-content/70">
+          {t.decoder.description}
+        </p>
+      </div>
+
+      <section className="mt-5 rounded-box border border-base-300 bg-base-200 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <fieldset>
+            <legend className="label-text mb-1.5 block text-xs font-medium">
+              {t.decoder.inputType}
+            </legend>
+            <div className="join" aria-label={t.decoder.inputType}>
+              <button
+                type="button"
+                className={`btn join-item btn-sm ${mode === 'tx' ? 'btn-primary' : 'btn-outline border-base-300'}`}
+                aria-pressed={mode === 'tx'}
+                onClick={() => setMode('tx')}
+              >
+                {t.decoder.txMode}
+              </button>
+              <button
+                type="button"
+                className={`btn join-item btn-sm ${mode === 'calldata' ? 'btn-primary' : 'btn-outline border-base-300'}`}
+                aria-pressed={mode === 'calldata'}
+                onClick={() => setMode('calldata')}
+              >
+                {t.decoder.calldataMode}
+              </button>
+            </div>
+          </fieldset>
+
+          <div className="form-control sm:w-52">
+            <label className="label py-1" htmlFor="decoder-network">
+              <span className="label-text text-xs font-medium">{t.decoder.network}</span>
+            </label>
+            <select
+              id="decoder-network"
+              className="select select-bordered select-sm w-full"
+              value={chainId}
+              onChange={(event) => setChainId(Number(event.target.value))}
             >
-              ← TxRay
-            </Link>
-            <h1 className="mt-2 text-3xl font-bold text-primary">
-              {t.decoder.title}
-            </h1>
-            <p className="mt-1 text-sm text-base-content/70">
-              {t.decoder.description}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <AppearanceControls />
-            <WalletButton />
+              {TXRAY_CHAINS.map((chain) => (
+                <option key={chain.id} value={chain.id}>
+                  {chain.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-
-        <div className="form-control mt-8">
-          <label className="label" htmlFor="decoder-network">
-            <span className="label-text">{t.decoder.network}</span>
-          </label>
-          <select
-            id="decoder-network"
-            className="select select-bordered w-full"
-            value={chainId}
-            onChange={(event) => setChainId(Number(event.target.value))}
-          >
-            {TXRAY_CHAINS.map((chain) => (
-              <option key={chain.id} value={chain.id}>
-                {chain.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <fieldset className="mt-4">
-          <legend className="label-text mb-2">{t.decoder.inputType}</legend>
-          <div className="join" aria-label={t.decoder.inputType}>
-            <button
-              type="button"
-              className={`btn join-item btn-sm ${mode === 'tx' ? 'btn-primary' : 'btn-outline'}`}
-              aria-pressed={mode === 'tx'}
-              onClick={() => setMode('tx')}
-            >
-              {t.decoder.txMode}
-            </button>
-            <button
-              type="button"
-              className={`btn join-item btn-sm ${mode === 'calldata' ? 'btn-primary' : 'btn-outline'}`}
-              aria-pressed={mode === 'calldata'}
-              onClick={() => setMode('calldata')}
-            >
-              {t.decoder.calldataMode}
-            </button>
-          </div>
-        </fieldset>
 
         <div className="form-control mt-4">
-          <label className="label" htmlFor="decoder-input">
-            <span className="label-text">{mode === 'tx' ? t.decoder.txMode : t.decoder.calldataMode}</span>
+          <label className="label py-1" htmlFor="decoder-input">
+            <span className="label-text text-xs font-medium">
+              {mode === 'tx' ? t.decoder.txMode : t.decoder.calldataMode}
+            </span>
           </label>
           <textarea
             id="decoder-input"
             value={input}
-            onChange={(event) => mode === 'tx'
-              ? setTxInput(event.target.value)
-              : setCalldataInput(event.target.value)}
+            onChange={(event) =>
+              mode === 'tx'
+                ? setTxInput(event.target.value)
+                : setCalldataInput(event.target.value)
+            }
             placeholder={mode === 'tx' ? t.decoder.txPlaceholder : t.decoder.calldataPlaceholder}
             className="textarea textarea-bordered min-h-24 w-full break-all font-mono text-sm"
             spellCheck={false}
             aria-invalid={value.length > 0 && !inputValid}
             aria-describedby="decoder-input-help"
           />
-          <p id="decoder-input-help" className="mt-2 text-xs text-base-content/70">
+          <p id="decoder-input-help" className="mt-1.5 text-xs text-base-content/70">
             {mode === 'tx' ? t.decoder.txHelp : t.decoder.calldataHelp}
           </p>
           {value.length > 0 && !inputValid && (
-            <p className="mt-2 text-sm text-error" role="alert">
-              {mode === 'tx' ? t.decoder.invalidTxHash : t.decoder.invalidCalldata}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="text-sm text-error" role="alert">
+                {mode === 'tx' ? t.decoder.invalidTxHash : t.decoder.invalidCalldata}
+              </p>
+              {mode === 'tx' && isCalldata(value) && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-xs border-primary/40 text-primary"
+                  onClick={() => {
+                    setCalldataInput(value);
+                    setTxInput('');
+                    setMode('calldata');
+                  }}
+                >
+                  {t.decoder.switchToCalldataHint}
+                </button>
+              )}
+              {mode === 'calldata' && isTxHash(value) && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-xs border-primary/40 text-primary"
+                  onClick={() => {
+                    setTxInput(value);
+                    setCalldataInput('');
+                    setMode('tx');
+                  }}
+                >
+                  {t.decoder.switchToTxHint}
+                </button>
+              )}
+            </div>
           )}
-          <div className="mt-2 flex flex-wrap gap-3">
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-base-content/60">{t.decoder.samplesLabel}:</span>
             <button
               type="button"
-              className="link link-primary text-xs"
-              onClick={() => { setMode('calldata'); setCalldataInput(APPROVE_EXAMPLE); setCalldataTarget(''); }}
+              className="btn btn-ghost btn-xs border border-base-300 text-primary"
+              onClick={() => {
+                setMode('calldata');
+                setCalldataInput(APPROVE_EXAMPLE);
+                setCalldataTarget('');
+              }}
             >
               {t.decoder.approveSample}
             </button>
             <button
               type="button"
-              className="link link-secondary text-xs"
-              onClick={() => { setMode('calldata'); setCalldataInput(NESTED_MULTICALL_EXAMPLE); setCalldataTarget(''); }}
+              className="btn btn-ghost btn-xs border border-base-300 text-secondary"
+              onClick={() => {
+                setMode('calldata');
+                setCalldataInput(NESTED_MULTICALL_EXAMPLE);
+                setCalldataTarget('');
+              }}
             >
               {t.decoder.callTreeSample}
             </button>
           </div>
+
           {mode === 'calldata' && (
-            <div className="form-control mt-4">
-              <label className="label" htmlFor="decoder-target">
-                <span className="label-text">{t.decoder.calldataTarget}</span>
+            <div className="form-control mt-4 border-t border-base-300/70 pt-3">
+              <label className="label py-1" htmlFor="decoder-target">
+                <span className="label-text text-xs font-medium">{t.decoder.calldataTarget}</span>
               </label>
-              <input id="decoder-target" className="input input-bordered w-full font-mono" placeholder="0x…"
-                value={calldataTarget} spellCheck={false} autoComplete="off"
+              <input
+                id="decoder-target"
+                className="input input-bordered input-sm w-full font-mono"
+                placeholder="0x…"
+                value={calldataTarget}
+                spellCheck={false}
+                autoComplete="off"
                 onChange={(event) => setCalldataTarget(event.target.value)}
-                aria-invalid={Boolean(targetValue && !targetAddress)} aria-describedby="decoder-target-help" />
-              <p className="mt-1 text-xs text-base-content/70" id="decoder-target-help">{t.decoder.calldataTargetHelp}</p>
+                aria-invalid={Boolean(targetValue && !targetAddress)}
+                aria-describedby="decoder-target-help"
+              />
+              <p className="mt-1 text-xs text-base-content/65" id="decoder-target-help">
+                {t.decoder.calldataTargetHelp}
+              </p>
               {targetValue && !targetAddress && (
-                <p className="mt-1 text-xs text-error" role="alert">{t.decoder.invalidTarget}</p>
+                <p className="mt-1 text-xs text-error" role="alert">
+                  {t.decoder.invalidTarget}
+                </p>
               )}
             </div>
           )}
         </div>
+      </section>
 
-        {showResult && (
-          <div className="mt-6" aria-live="polite">
-            {transaction && <TransactionExecutionView transaction={transaction} chainId={chainId} />}
+      {showResult && (
+        <div className="mt-6" aria-live="polite">
+          {transaction && <TransactionExecutionView transaction={transaction} chainId={chainId} />}
 
-            {transaction?.to && !isCalldata(transaction.input) && (
-              <p className="text-sm text-base-content/70">{t.decoder.noCalldata}</p>
-            )}
+          {transaction?.to && !isCalldata(transaction.input) && (
+            <p className="text-sm text-base-content/70">{t.decoder.noCalldata}</p>
+          )}
 
-            {(transactionQuery.isLoading || callQuery.isLoading) && (
-              <div className="card bg-base-200" role="status">
-                <div className="card-body items-center gap-3 text-base-content/70">
-                  <span
-                    className="loading loading-spinner loading-md text-primary"
-                    aria-hidden="true"
-                  />
-                  <span>{t.decoder.loading}</span>
-                </div>
+          {(transactionQuery.isLoading || callQuery.isLoading) && (
+            <div className="card border border-base-300 bg-base-200" role="status">
+              <div className="card-body items-center gap-3 text-base-content/70">
+                <span
+                  className="loading loading-spinner loading-md text-primary"
+                  aria-hidden="true"
+                />
+                <span>{t.decoder.loading}</span>
               </div>
-            )}
+            </div>
+          )}
 
-            {(transactionQuery.isError || callQuery.isError) && (
-              <div className="alert alert-error" role="alert">
-                <span className="text-sm">
-                  {transactionQuery.isError ? t.decoder.txLookupFailed : t.decoder.calldataFailed}
-                </span>
-              </div>
-            )}
+          {(transactionQuery.isError || callQuery.isError) && (
+            <div className="alert alert-error" role="alert">
+              <span className="text-sm">
+                {transactionQuery.isError ? t.decoder.txLookupFailed : t.decoder.calldataFailed}
+              </span>
+            </div>
+          )}
 
-            {data && (
-              <>
-                <p className="mb-4 text-sm text-base-content/70" role="status">
-                  {data.source === 'tx' ? t.decoder.txResultNote : data.to ? t.decoder.calldataTargetNote : t.decoder.calldataResultNote}
-                </p>
-                <DecodedView data={data} chainId={chainId} />
-              </>
-            )}
-          </div>
-        )}
-
-        <p className="mt-8 text-xs text-base-content/70">
-          {t.decoder.readonly}
-        </p>
-      </div>
-    </main>
+          {data && (
+            <>
+              <p className="mb-4 text-sm text-base-content/70" role="status">
+                {data.source === 'tx'
+                  ? t.decoder.txResultNote
+                  : data.to
+                    ? t.decoder.calldataTargetNote
+                    : t.decoder.calldataResultNote}
+              </p>
+              <DecodedView data={data} chainId={chainId} />
+            </>
+          )}
+        </div>
+      )}
+    </AppShell>
   );
 }
 
@@ -230,6 +279,81 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
         ? 'alert-warning'
         : '';
 
+  const functionCard = (
+    <div className="card border border-base-300 bg-base-200">
+      <div className="card-body gap-3 p-4 sm:p-6">
+        <div>
+          <div className="text-xs text-base-content/70">
+            {t.decoder.function}
+          </div>
+          {data.functionName ? (
+            <div className="font-mono text-lg font-semibold text-primary">
+              {data.functionName}
+            </div>
+          ) : (
+            <div className="break-words font-mono text-sm text-warning">
+              {t.decoder.unknownFunction(data.selector)}
+            </div>
+          )}
+          {data.signature && (
+            <div className="mt-1 break-all font-mono text-xs text-base-content/70">
+              {data.signature}
+            </div>
+          )}
+          <p className="mt-1 text-xs text-base-content/70">
+            {t.decoder.signatureSources[data.signatureSource]}
+            {data.abiStatus && data.abiStatus !== 'matched' && ` · ${t.decoder.abiFallback[data.abiStatus]}`}
+            {data.verifiedCall?.approvalInterface && ` · ${t.decoder.approvalInterfaces[data.verifiedCall.approvalInterface]}`}
+          </p>
+        </div>
+
+        {data.source === 'calldata' && data.to && (
+          <div>
+            <div className="text-xs text-base-content/70">{t.decoder.targetContract}</div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <AddressLink address={data.to} chainId={chainId} />
+              <CopyButton value={data.to} label={t.decoder.targetContract} />
+            </div>
+          </div>
+        )}
+
+        {data.params.length > 0 && (
+          <table className="table table-sm block sm:table">
+            <thead className="hidden sm:table-header-group">
+              <tr>
+                <th>{t.decoder.parameter}</th>
+                <th>{t.decoder.type}</th>
+                <th>{t.decoder.value}</th>
+              </tr>
+            </thead>
+            <tbody className="block space-y-3 sm:table-row-group sm:space-y-0">
+              {data.params.map((param, index) => (
+                <ParamRow
+                  key={`${data.raw}:${param.name ?? 'arg'}-${index}`}
+                  param={param}
+                  index={index}
+                  chainId={chainId}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+
+  /* 树身份 = 链 + 目标 + calldata：切换缓存结果时强制重建组件，
+     让默认展开状态（高风险 / 未知路径）对新树重新计算 */
+  const callTree = (
+    <CallTreeView
+      key={`${chainId}:${data.to ?? ''}:${data.raw}:${data.signatureSource}`}
+      tree={tree}
+      chainId={chainId}
+    />
+  );
+
+  const isNested = tree.nodeCount > 1;
+
   return (
     <div className="space-y-4">
       {data.explainKey && (
@@ -246,78 +370,27 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
         </div>
       )}
 
-      <div className="card bg-base-200">
-        <div className="card-body gap-3 p-4 sm:p-6">
-          <div>
-            <div className="text-xs text-base-content/70">
-              {t.decoder.function}
-            </div>
-            {data.functionName ? (
-              <div className="font-mono text-lg text-primary">
-                {data.functionName}
-              </div>
-            ) : (
-              <div className="break-words font-mono text-sm text-warning">
-                {t.decoder.unknownFunction(data.selector)}
-              </div>
-            )}
-            {data.signature && (
-              <div className="mt-1 break-all font-mono text-xs text-base-content/70">
-                {data.signature}
-              </div>
-            )}
-            <p className="mt-1 text-xs text-base-content/70">
-              {t.decoder.signatureSources[data.signatureSource]}
-              {data.abiStatus && data.abiStatus !== 'matched' && ` · ${t.decoder.abiFallback[data.abiStatus]}`}
-              {data.verifiedCall?.approvalInterface && ` · ${t.decoder.approvalInterfaces[data.verifiedCall.approvalInterface]}`}
-            </p>
-          </div>
+      {isNested ? (
+        <>
+          {callTree}
+          {functionCard}
+        </>
+      ) : (
+        <>
+          {functionCard}
+          {callTree}
+        </>
+      )}
 
-          {data.source === 'calldata' && data.to && (
-            <div>
-              <div className="text-xs text-base-content/70">{t.decoder.targetContract}</div>
-              <AddressLink address={data.to} chainId={chainId} />
-            </div>
-          )}
-
-          {data.params.length > 0 && (
-            <table className="table table-sm block sm:table">
-              <thead className="hidden sm:table-header-group">
-                <tr>
-                  <th>{t.decoder.parameter}</th>
-                  <th>{t.decoder.type}</th>
-                  <th>{t.decoder.value}</th>
-                </tr>
-              </thead>
-              <tbody className="block space-y-3 sm:table-row-group sm:space-y-0">
-                {data.params.map((param, index) => (
-                  <ParamRow
-                    key={`${param.name ?? 'arg'}-${index}`}
-                    param={param}
-                    index={index}
-                    chainId={chainId}
-                  />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      {/* 树身份 = 链 + 目标 + calldata：切换缓存结果时强制重建组件，
-          让默认展开状态（高风险 / 未知路径）对新树重新计算 */}
-      <CallTreeView
-        key={`${chainId}:${data.to ?? ''}:${data.raw}:${data.signatureSource}`}
-        tree={tree}
-        chainId={chainId}
-      />
-
-      <details className="collapse-arrow collapse bg-base-200">
-        <summary className="collapse-title text-sm text-base-content/70">
+      <details className="collapse-arrow collapse border border-base-300 bg-base-200">
+        <summary className="collapse-title text-sm text-base-content/75">
           {t.decoder.rawCalldata}
         </summary>
         <div className="collapse-content">
-          <code className="block break-all font-mono text-xs text-base-content/70">
+          <div className="mb-2 flex justify-end">
+            <CopyButton value={data.raw} label={t.decoder.rawCalldata} />
+          </div>
+          <code className="block break-all font-mono text-xs text-base-content/75">
             {data.raw}
           </code>
         </div>
@@ -336,6 +409,7 @@ function ParamRow({
   chainId: number;
 }) {
   const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
   const label =
     param.isAddress && isAddress(param.value)
       ? getSpenderLabel(getAddress(param.value), chainId)
@@ -343,6 +417,11 @@ function ParamRow({
   const isMaxUint = !param.isTokenId && isMaxUintValue(param.type, param.value);
   const scope = param.approvalAmountScope;
   const amountLabel = scope === 'max' || scope === 'large' ? t.approvalScope[scope] : undefined;
+  const isLongPlain =
+    !param.isAddress &&
+    !amountLabel &&
+    !isMaxUint &&
+    param.value.length > LONG_VALUE_THRESHOLD;
 
   return (
     <tr className="block rounded-box border border-base-300 p-3 sm:table-row sm:border-0 sm:p-0">
@@ -361,26 +440,48 @@ function ParamRow({
           {t.decoder.value}:
         </span>
         {param.isAddress && isAddress(param.value) ? (
-          <span className="inline-flex max-w-full flex-wrap items-center gap-2">
+          <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
             {label && (
               <span className="badge badge-success badge-sm">{label.name}</span>
             )}
             <AddressLink address={param.value} chainId={chainId} />
+            <CopyButton value={param.value} />
           </span>
         ) : amountLabel ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className={`badge badge-sm ${scope === 'max' ? 'badge-error' : 'badge-warning'}`}>
               {param.ambiguousApprovalAmount ? t.decoder.ifErc20(amountLabel) : amountLabel}
             </span>
-            <span className="break-all font-mono text-xs">{param.value}</span>
+            <span className="break-all font-mono text-xs tabular-nums">{param.value}</span>
           </div>
         ) : isMaxUint ? (
           <span className="badge badge-error badge-sm">
             {t.decoder.maxUintValue(param.type)}
           </span>
+        ) : isLongPlain ? (
+          <div className="space-y-1.5">
+            <div className="break-all font-mono text-xs text-base-content/85">
+              {param.isTokenId && <span className="mr-2 text-base-content/70">Token ID</span>}
+              {expanded ? param.value : `${param.value.slice(0, LONG_VALUE_PREVIEW)}…`}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-base-content/55 tabular-nums">
+                {t.decoder.valueLength(param.value.length)}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs h-6 min-h-0 border border-base-300 px-2"
+                onClick={() => setExpanded((prev) => !prev)}
+              >
+                {expanded ? t.decoder.collapseValue : t.decoder.expandValue}
+              </button>
+              <CopyButton value={param.value} />
+            </div>
+          </div>
         ) : (
-          <span className="break-all font-mono text-xs">
-            {param.isTokenId && <span className="mr-2 text-base-content/70">Token ID</span>}{param.value}
+          <span className="break-all font-mono text-xs tabular-nums">
+            {param.isTokenId && <span className="mr-2 text-base-content/70">Token ID</span>}
+            {param.value}
           </span>
         )}
       </td>
@@ -396,7 +497,7 @@ function AddressLink({ address, chainId }: { address: string; chainId: number })
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${t.decoder.targetContract}: ${address}`}
-      className="link link-hover rounded-sm break-all font-mono text-xs text-base-content/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+      className="link link-hover rounded-sm break-all font-mono text-xs text-base-content/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
       {address}
     </a>

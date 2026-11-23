@@ -112,7 +112,10 @@ export default function CallTreeView({
   };
 
   return (
-    <section className="card bg-base-200" aria-label={t.decoder.tree.title}>
+    <section
+      className="card border border-base-300 bg-base-200"
+      aria-label={t.decoder.tree.title}
+    >
       <div className="card-body gap-3 p-4 sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -194,10 +197,9 @@ function TreeNodeView({
       aria-level={node.depth + 1}
       data-testid="call-node"
       data-node-path={node.path}
-      className={`rounded-box ${node.depth === 0 ? '' : 'border-l-2 border-base-300'}`}
-      style={node.depth === 0 ? undefined : { marginLeft: '0.5rem', paddingLeft: '0.5rem' }}
+      className={`rounded-box ${node.depth === 0 ? '' : 'ml-2 border-l border-base-300/90 pl-2.5 sm:ml-3 sm:pl-3'}`}
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-0.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1 py-1 hover:bg-base-300/40">
         {hasChildren ? (
           <button
             type="button"
@@ -315,7 +317,7 @@ function TreeNodeView({
         </p>
       )}
       {node.container && (
-        <p className="ml-6 text-xs text-base-content/50">
+        <p className="ml-6 text-[11px] leading-4 text-base-content/50">
           {t.decoder.tree.identification[node.container.identification]}
           {node.container.version
             ? ` · ${t.decoder.tree.userOp.versionLabel} ${node.container.version}`
@@ -407,9 +409,16 @@ const SEVERITY_STYLE: Record<RiskSeverity, string> = {
 
 function RiskFindingView({ finding }: { finding: RiskFinding }) {
   const { t } = useI18n();
+  const isPropagatedBatch = finding.code === 'batch-contains-high-risk';
+  const style = isPropagatedBatch
+    ? 'border-error/35 bg-error/5 py-0.5 text-error/90'
+    : finding.severity === 'high'
+      ? 'border-error/50 border-l-4 border-l-error bg-error/12 py-1.5 text-error'
+      : SEVERITY_STYLE[finding.severity];
+
   return (
     <li
-      className={`rounded-box border px-2 py-1 text-xs ${SEVERITY_STYLE[finding.severity]}`}
+      className={`rounded-box border px-2.5 text-xs ${isPropagatedBatch ? '' : 'py-1'} ${style}`}
       data-testid="risk-finding"
       data-risk-code={finding.code}
       data-severity={finding.severity}
@@ -418,11 +427,11 @@ function RiskFindingView({ finding }: { finding: RiskFinding }) {
         {finding.severity === 'high' ? '⚠ ' : ''}
         {t.decoder.tree.riskTitles[finding.code]}
       </span>
-      <span className="text-base-content/70">
+      <span className="text-base-content/75">
         {' '}
         — {t.decoder.tree.riskExplains[finding.code]}
       </span>
-      <span className="ml-1 text-base-content/40">[{finding.nodePath}]</span>
+      <span className="ml-1 font-mono text-[11px] text-base-content/45">[{finding.nodePath}]</span>
     </li>
   );
 }
