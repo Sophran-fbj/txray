@@ -1,7 +1,9 @@
 import {
+  encodeAbiParameters,
   encodeFunctionData,
   getAddress,
   parseAbiItem,
+  parseAbiParameters,
   type Address,
   type Hex,
 } from 'viem';
@@ -21,6 +23,8 @@ export const ADDR = {
   multicall3: '0xcA11bde05977b3631167028862bE2a173976CA11' as Address,
   otherMulticall: '0x5ba1e12693dc8f9c48aad8770482f4739beed696' as Address,
   safeProxy: '0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552' as Address,
+  safeMultiSend: '0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526' as Address,
+  universalRouter: '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD' as Address,
   entrypointV07: '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as Address,
   entrypointV08: '0x4337084d9e255ff0702461cf8895ce9e3b5ff108' as Address,
   account: '0x6b175474e89094c44da98b954eedeac495271d0f' as Address,
@@ -415,3 +419,85 @@ export const SAFE_SIGNATURES_LOOKS_LIKE_APPROVE = encodeApprove();
 /** 空 batch。 */
 export const EMPTY_AGGREGATE3 = encodeAggregate3([]);
 export const EMPTY_EXECUTE_BATCH = encodeAccountExecuteBatch([]);
+
+const safeMultiSendAbi = [parseAbiItem('function multiSend(bytes transactions)')];
+const universalRouterAbi = [parseAbiItem('function execute(bytes commands, bytes[] inputs)')];
+const universalRouterDeadlineAbi = [parseAbiItem('function execute(bytes commands, bytes[] inputs, uint256 deadline)')];
+
+export interface MultiSendSubcall {
+  operation: 0 | 1;
+  to: Address;
+  value?: bigint;
+  data?: Hex;
+}
+
+export function encodeSafeMultiSend(calls: MultiSendSubcall[]): Hex {
+  const packed = calls
+    .map((call) => {
+      const op = call.operation.toString(16).padStart(2, '0');
+      const to = call.to.slice(2).toLowerCase().padStart(40, '0');
+      const value = (call.value ?? 0n).toString(16).padStart(64, '0');
+      const dataHex = (call.data ?? '0x').slice(2);
+      const dataLen = (dataHex.length / 2).toString(16).padStart(64, '0');
+      return `${op}${to}${value}${dataLen}${dataHex}`;
+    })
+    .join('');
+  return encodeFunctionData({
+    abi: safeMultiSendAbi,
+    functionName: 'multiSend',
+    args: [`0x${packed}` as Hex],
+  });
+}
+
+export interface UniversalRouterCommandInput {
+  commandByte: number;
+  input: Hex;
+}
+
+export function encodeUniversalRouterExecute(
+  entries: UniversalRouterCommandInput[],
+  deadline?: bigint,
+): Hex {
+  const commands = `0x${entries.map((item) => item.commandByte.toString(16).padStart(2, '0')).join('')}` as Hex;
+  const inputs = entries.map((item) => item.input);
+  if (deadline !== undefined) {
+    return encodeFunctionData({
+      abi: universalRouterDeadlineAbi,
+      functionName: 'execute',
+      args: [commands, inputs, deadline],
+    });
+  }
+  return encodeFunctionData({
+    abi: universalRouterAbi,
+    functionName: 'execute',
+    args: [commands, inputs],
+  });
+}
+
+export function encodeUniversalRouterPermit2Input(deadline: bigint, spender: Address = ADDR.spender): Hex {
+  return encodeAbiParameters(
+    parseAbiParameters('((address token, uint160 amount, uint48 expiration, uint48 nonce) details, address spender, uint256 sigDeadline) permitSingle, bytes data'),
+    [
+      {
+        details: { token: ADDR.usdc, amount: MAX_UINT160, expiration: Number(deadline), nonce: 0 },
+        spender,
+        sigDeadline: deadline,
+      },
+      `0x${'ef'.repeat(65)}`,
+    ],
+  );
+}
+
+export function encodeUniversalRouterV3SwapInput(recipient: Address = ADDR.recipient): Hex {
+  return encodeAbiParameters(
+    parseAbiParameters('address recipient, uint256 amountIn, uint256 amountOutMin, bytes path, bool payerIsUser'),
+    [recipient, 1_000_000n, 900_000n, '0x1234', true],
+  );
+}
+
+export function encodeUniversalRouterSweepInput(recipient: Address = ADDR.recipient): Hex {
+  return encodeAbiParameters(
+    parseAbiParameters('address token, address recipient, uint256 amountMin'),
+    [ADDR.usdc, recipient, 1n],
+  );
+}

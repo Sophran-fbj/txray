@@ -32,9 +32,12 @@ const BATCH_CONTAINER_KINDS = new Set([
   'multicall3-aggregate3',
   'multicall3-aggregate3Value',
   'multicall-bytes',
+  'safe-multiSend',
   'account-executeBatch',
   'entrypoint-handleOps',
   'entrypoint-handleOps-legacy',
+  'uniswap-universal-router',
+  'uniswap-universal-router-deadline',
 ]);
 
 const PARSE_INCOMPLETE_STATUSES = new Set([
@@ -201,9 +204,16 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
     );
   }
 
-  // Safe DELEGATECALL（operation == 1）。evidence 的 target 必须是
-  // execTransaction 的 to 参数（真正被 delegatecall 的合约），不是 Safe 自身。
-  if (node.container?.kind === 'safe-execTransaction') {
+  // Safe DELEGATECALL（execTransaction operation == 1 或 MultiSend 子调用 operation == 1）。
+  // evidence 的 target 必须是实际被 delegatecall 的目标合约，不是 Safe 自身。
+  if (node.callOperation === 'delegatecall') {
+    results.push(
+      finding('safe-delegatecall', 'high', node, {
+        operation: '1',
+        target: node.target ?? 'unknown',
+      }),
+    );
+  } else if (node.container?.kind === 'safe-execTransaction') {
     const operation = paramByName(node, 'operation');
     if (operation?.value === '1') {
       const innerTarget =
@@ -214,6 +224,13 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
           target: innerTarget,
         }),
       );
+    }
+  }
+
+  if (node.container?.kind === 'uniswap-universal-router-deadline') {
+    const deadline = paramByName(node, 'deadline');
+    if (deadline) {
+      checkDeadline(results, node, 'deadline', deadline.value, nowMs);
     }
   }
 

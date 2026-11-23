@@ -7,7 +7,11 @@ import {
   encodeHandleOpsPacked,
   encodeNestedAggregate3,
   encodeSafeExecTransaction,
+  encodeSafeMultiSend,
   encodeTransfer,
+  encodeUniversalRouterExecute,
+  encodeUniversalRouterPermit2Input,
+  encodeUniversalRouterSweepInput,
 } from './call-tree-fixtures';
 
 // 调用树 E2E：fixtures 由 src/features/txray/decoder/call-tree/fixtures.ts
@@ -209,4 +213,33 @@ test('移动端调用树不横向溢出', async ({ page }, testInfo) => {
   );
   expect(overflow).toBeLessThanOrEqual(1);
   await expect(page.getByTestId('static-decode-notice')).toBeVisible();
+});
+
+test('展开 Safe MultiSend 子调用并标记 DELEGATECALL 风险', async ({ page }) => {
+  const bundle = encodeSafeMultiSend([
+    { operation: 0, to: ADDR.usdc, data: encodeApprove() },
+    { operation: 1, to: ADDR.spender, data: encodeTransfer(ADDR.recipient, 1n) },
+  ]);
+  await pasteCalldata(page, bundle);
+
+  await expect(page.getByText('Safe · MultiSend 批量打包')).toBeVisible();
+  await expect(page.getByText('DELEGATECALL', { exact: true })).toBeVisible();
+  await expect(page.getByText('最大额度（若为 ERC-20）')).toBeVisible();
+});
+
+test('展开 Uniswap Universal Router 命令流并识别 Permit2 花费授权', async ({ page }) => {
+  const futureDeadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const routerData = encodeUniversalRouterExecute(
+    [
+      { commandByte: 0x0a, input: encodeUniversalRouterPermit2Input(futureDeadline) },
+      { commandByte: 0x04, input: encodeUniversalRouterSweepInput() },
+    ],
+    futureDeadline,
+  );
+  await pasteCalldata(page, routerData);
+
+  await expect(page.getByText('Uniswap Universal Router · execute（含截止时间）')).toBeVisible();
+  await expect(page.getByText('PERMIT2_PERMIT', { exact: true })).toBeVisible();
+  await expect(page.getByText('SWEEP', { exact: true })).toBeVisible();
+  await expect(page.getByText('Permit2 花费授权')).toBeVisible();
 });

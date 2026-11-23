@@ -9,5 +9,9 @@ export {
   encodeMulticallBytes,
   encodeNestedAggregate3,
   encodeSafeExecTransaction,
+  encodeSafeMultiSend,
   encodeTransfer,
+  encodeUniversalRouterExecute,
+  encodeUniversalRouterPermit2Input,
+  encodeUniversalRouterSweepInput,
 } from '../src/features/txray/decoder/call-tree/fixtures';

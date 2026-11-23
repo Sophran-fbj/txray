@@ -15,9 +15,13 @@ import {
   encodePermit2AllowancePermit,
   encodePermit2PermitTransferFrom,
   encodeSafeExecTransaction,
+  encodeSafeMultiSend,
   encodeSetApprovalForAll,
   encodeTransfer,
   encodeTransferFrom,
+  encodeUniversalRouterExecute,
+  encodeUniversalRouterPermit2Input,
+  encodeUniversalRouterSweepInput,
 } from './fixtures';
 import { buildCallTree } from './decode';
 import type { CallNode, RiskCode } from './types';
@@ -453,5 +457,29 @@ describe('风险规则：通用约束', () => {
     const hits = findByCode(result.root, 'nonzero-native-value');
     // value 出现在 execute 展开出的内部调用（transfer）节点上
     expect(hits.map((hit) => hit.node.path)).toEqual(['root.0']);
+  });
+
+  it('Safe MultiSend 识别子调用 delegatecall 并冒泡高风险', () => {
+    const bundle = encodeSafeMultiSend([
+      { operation: 1, to: ADDR.spender, data: encodeTransfer(ADDR.recipient, 1n) },
+    ]);
+    const result = buildCallTree({ to: ADDR.safeMultiSend, data: bundle }, { nowMs: NOW_MS });
+    expect(findByCode(result.root, 'safe-delegatecall')).toHaveLength(1);
+    expect(findByCode(result.root, 'batch-contains-high-risk')).toHaveLength(1);
+  });
+
+  it('Universal Router 识别内嵌 PERMIT2_PERMIT 与过期 deadline 并冒泡高风险', () => {
+    const expired = NOW_SEC - 10n;
+    const data = encodeUniversalRouterExecute(
+      [
+        { commandByte: 0x0a, input: encodeUniversalRouterPermit2Input(expired) },
+        { commandByte: 0x04, input: encodeUniversalRouterSweepInput() },
+      ],
+      expired,
+    );
+    const result = buildCallTree({ to: ADDR.universalRouter, data }, { nowMs: NOW_MS });
+    expect(findByCode(result.root, 'permit2-permit')).toHaveLength(1);
+    expect(findByCode(result.root, 'batch-contains-high-risk')).toHaveLength(1);
+    expect(findByCode(result.root, 'deadline-suspicious').length).toBeGreaterThanOrEqual(2);
   });
 });

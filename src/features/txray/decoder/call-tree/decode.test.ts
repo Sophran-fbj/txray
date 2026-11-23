@@ -1,3 +1,4 @@
+import { encodeFunctionData, parseAbiItem } from 'viem';
 import { describe, expect, it } from 'vitest';
 import {
   ADDR,
@@ -23,7 +24,12 @@ import {
   encodeSafeExecTransaction,
   encodeSetApprovalForAll,
   encodeTransfer,
+  encodeSafeMultiSend,
   encodeTransferFrom,
+  encodeUniversalRouterExecute,
+  encodeUniversalRouterPermit2Input,
+  encodeUniversalRouterSweepInput,
+  encodeUniversalRouterV3SwapInput,
 } from './fixtures';
 import { buildCallTree, subtreeHasHighRisk } from './decode';
 import type { CallNode, RiskFinding } from './types';
@@ -587,6 +593,93 @@ describe('buildCallTree: 稳定性与不变量', () => {
       ADDR.spender.toLowerCase(),
     );
     expect(result.root.permit2?.deadline).toBe(deadline.toString());
+  });
+});
+
+describe('Safe MultiSend 与 Universal Router 容器解码', () => {
+  it('展开 Safe execTransaction -> multiSend 并标记每个子调用的 CALL/DELEGATECALL', () => {
+    const bundle = encodeSafeMultiSend([
+      { operation: 0, to: ADDR.usdc, value: 0n, data: encodeApprove() },
+      { operation: 1, to: ADDR.spender, value: 0n, data: encodeTransfer(ADDR.recipient, 1n) },
+    ]);
+    const tx = encodeSafeExecTransaction({
+      to: ADDR.safeMultiSend,
+      operation: 1,
+      data: bundle,
+    });
+    const result = buildCallTree({ to: ADDR.safeProxy, data: tx }, { nowMs: FIXED_NOW_MS });
+
+    expect(result.nodeCount).toBe(4);
+    const multiSendNode = result.root.children[0];
+    expect(multiSendNode.container?.kind).toBe('safe-multiSend');
+    expect(multiSendNode.container?.identification).toBe('canonical-address-and-abi');
+    expect(multiSendNode.children).toHaveLength(2);
+    expect(multiSendNode.children[0]).toMatchObject({
+      functionName: 'approve',
+      callOperation: 'call',
+      sourceKind: 'safe-multisend-subcall',
+    });
+    expect(multiSendNode.children[1]).toMatchObject({
+      functionName: 'transfer',
+      callOperation: 'delegatecall',
+      sourceKind: 'safe-multisend-subcall',
+    });
+  });
+
+  it('截断或非法 operation 的 multiSend 标记为 partial 而非静默成功', () => {
+    const multiSendAbi = [parseAbiItem('function multiSend(bytes transactions)')];
+    const invalidOp = encodeFunctionData({
+      abi: multiSendAbi,
+      functionName: 'multiSend',
+      args: [`0x02${'11'.repeat(85)}` as `0x${string}`],
+    });
+    const invalidResult = buildCallTree({ to: ADDR.safeMultiSend, data: invalidOp }, { nowMs: FIXED_NOW_MS });
+    expect(invalidResult.root.decodeStatus).toBe('partial');
+
+    const truncatedTail = encodeFunctionData({
+      abi: multiSendAbi,
+      functionName: 'multiSend',
+      args: [`0x00${ADDR.usdc.slice(2)}${'0'.repeat(64)}${'0'.repeat(63)}8095ea7b3` as `0x${string}`],
+    });
+    const truncatedResult = buildCallTree({ to: ADDR.safeMultiSend, data: truncatedTail }, { nowMs: FIXED_NOW_MS });
+    expect(truncatedResult.root.decodeStatus).toBe('partial');
+  });
+
+  it('解码 Uniswap Universal Router execute 命令流（含 Permit2、allowRevert 与未知命令）', () => {
+    const deadline = NOW_SEC + 3600n;
+    const data = encodeUniversalRouterExecute(
+      [
+        { commandByte: 0x0a, input: encodeUniversalRouterPermit2Input(deadline) },
+        { commandByte: 0x80 | 0x00, input: encodeUniversalRouterV3SwapInput() },
+        { commandByte: 0x04, input: encodeUniversalRouterSweepInput() },
+        { commandByte: 0x3f, input: '0xdeadbeef' },
+      ],
+      deadline,
+    );
+    const result = buildCallTree({ to: ADDR.universalRouter, data }, { nowMs: FIXED_NOW_MS });
+
+    expect(result.root.container?.kind).toBe('uniswap-universal-router-deadline');
+    expect(result.root.container?.identification).toBe('canonical-address-and-abi');
+    expect(result.root.children).toHaveLength(4);
+    expect(result.root.children[0]).toMatchObject({
+      functionName: 'PERMIT2_PERMIT',
+      decodeStatus: 'decoded',
+      allowFailure: false,
+    });
+    expect(result.root.children[0].permit2?.spender?.toLowerCase()).toBe(ADDR.spender.toLowerCase());
+    expect(result.root.children[1]).toMatchObject({
+      functionName: 'V3_SWAP_EXACT_IN',
+      decodeStatus: 'decoded',
+      allowFailure: true,
+    });
+    expect(result.root.children[2]).toMatchObject({
+      functionName: 'SWEEP',
+      target: ADDR.usdc.toLowerCase(),
+    });
+    expect(result.root.children[3]).toMatchObject({
+      decodeStatus: 'unknown',
+      selector: '0x3f',
+    });
   });
 });
 

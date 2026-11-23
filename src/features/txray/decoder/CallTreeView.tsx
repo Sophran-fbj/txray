@@ -251,6 +251,11 @@ function TreeNodeView({
             {t.decoder.tree.riskTitles['subcall-allow-failure']}
           </span>
         )}
+        {node.callOperation === 'delegatecall' && (
+          <span className="badge badge-error badge-xs font-mono">
+            DELEGATECALL
+          </span>
+        )}
         {highRiskCount > 0 && (
           <span
             className="badge badge-error badge-sm"

@@ -1,17 +1,26 @@
 import {
+  decodeAbiParameters,
   decodeFunctionData,
+  getAddress,
   parseAbiItem,
   toFunctionSelector,
   toFunctionSignature,
+  zeroAddress,
   type Abi,
   type AbiFunction,
+  type AbiParameter,
 } from 'viem';
 import { KNOWN_SIGNATURES } from '../signatures';
 import {
   ENTRYPOINT_ADDRESSES,
   MULTICALL3_ADDRESS,
+  PERMIT2_ADDRESS,
   PERMIT2_FIELD_PROFILES,
+  PERMIT2_PERMIT_ABIS,
   PERMIT2_PERMIT_ABI_BY_PROFILE,
+  SAFE_MULTISEND_ADDRESSES,
+  UNIVERSAL_ROUTER_ADDRESSES,
+  UNIVERSAL_ROUTER_COMMANDS,
   abiSignature,
   findContainerDefinitions,
   keccakDigest,
@@ -357,12 +366,19 @@ function expandContainer(
     case 'safe-execTransaction':
       expandSafe(node, decoded, depth, path, state);
       return;
+    case 'safe-multiSend':
+      expandSafeMultiSend(node, decoded, depth, path, state);
+      return;
     case 'account-execute':
       expandExecute(node, decoded, depth, path, state);
       return;
     case 'entrypoint-handleOps':
     case 'entrypoint-handleOps-legacy':
       expandHandleOps(node, definition, decoded, depth, path, state);
+      return;
+    case 'uniswap-universal-router':
+    case 'uniswap-universal-router-deadline':
+      expandUniversalRouter(node, decoded, depth, path, state);
       return;
     default:
       return;
@@ -438,6 +454,27 @@ function buildContainerInfo(
         identification: 'selector-and-abi-shape',
         note: 'safe-selector-shared',
       };
+    case 'safe-multiSend': {
+      const canonical = target ? SAFE_MULTISEND_ADDRESSES[target] : undefined;
+      return {
+        kind: definition.kind,
+        identification: canonical
+          ? 'canonical-address-and-abi'
+          : 'selector-and-abi-shape',
+        note: canonical ? undefined : 'multisend-address-mismatch',
+      };
+    }
+    case 'uniswap-universal-router':
+    case 'uniswap-universal-router-deadline': {
+      const canonical = target ? UNIVERSAL_ROUTER_ADDRESSES.has(target) : false;
+      return {
+        kind: definition.kind,
+        identification: canonical
+          ? 'canonical-address-and-abi'
+          : 'selector-and-abi-shape',
+        note: canonical ? undefined : 'universal-router-address-unknown',
+      };
+    }
     case 'account-execute':
     case 'account-executeBatch':
       return {
@@ -604,6 +641,257 @@ function expandSafe(
     state,
   });
   if (child) node.children.push(child);
+}
+
+/**
+ * Safe MultiSend.multiSend(bytes transactions):
+ * packed encoding = [operation: 1B][to: 20B][value: 32B][dataLen: 32B][data: dataLen B].
+ */
+function expandSafeMultiSend(
+  node: CallNode,
+  decoded: DecodedCall,
+  depth: number,
+  path: string,
+  state: TreeState,
+): void {
+  const rawTx = readString(decoded.args[0]) ?? '0x';
+  const normalized = normalizeHex(rawTx);
+  if (normalized === null) {
+    node.params = [];
+    node.decodeStatus = 'partial';
+    addWarningOnce(node, {
+      code: 'child-decode-failed',
+      detail: 'multisend-invalid-hex',
+    });
+    return;
+  }
+
+  const body = normalized.slice(2);
+  const slots: Array<{ operation: number; to: string; value: bigint; data: string }> = [];
+  let offset = 0;
+  let malformedPacked = false;
+  let capped = false;
+  const HEADER_HEX_LEN = 170; // (1 + 20 + 32 + 32) bytes * 2
+
+  while (offset < body.length) {
+    if (slots.length >= state.limits.maxArrayItems) {
+      capped = true;
+      break;
+    }
+    if (offset + HEADER_HEX_LEN > body.length) {
+      malformedPacked = true;
+      break;
+    }
+    const operation = Number.parseInt(body.slice(offset, offset + 2), 16);
+    if (operation !== 0 && operation !== 1) {
+      malformedPacked = true;
+      break;
+    }
+    const to = getAddress(`0x${body.slice(offset + 2, offset + 42)}`);
+    const value = BigInt(`0x${body.slice(offset + 42, offset + 106)}`);
+    const dataLen = BigInt(`0x${body.slice(offset + 106, offset + 170)}`);
+    const remainingBytes = BigInt((body.length - (offset + HEADER_HEX_LEN)) / 2);
+    if (dataLen > remainingBytes) {
+      malformedPacked = true;
+      break;
+    }
+    const dataHexLen = Number(dataLen) * 2;
+    const data = `0x${body.slice(offset + HEADER_HEX_LEN, offset + HEADER_HEX_LEN + dataHexLen)}`;
+    offset += HEADER_HEX_LEN + dataHexLen;
+    slots.push({ operation, to, value, data });
+  }
+
+  node.params = [
+    {
+      name: 'subcallsCount',
+      type: 'uint256',
+      value: String(slots.length),
+      isAddress: false,
+      truncated: false,
+    },
+  ];
+
+  if (malformedPacked) {
+    addWarningOnce(node, {
+      code: 'child-decode-failed',
+      detail: 'multisend-truncated',
+    });
+    node.decodeStatus = 'partial';
+  }
+
+  if (slots.length === 0) return;
+  if (!canExpandChildren(depth, state)) {
+    markRecursionStopped(node, 'max-depth');
+    return;
+  }
+
+  let budgetTruncated = false;
+  for (let index = 0; index < slots.length; index += 1) {
+    const slot = slots[index];
+    const child = decodeCall(
+      slot.data,
+      { to: slot.to, value: slot.value },
+      'safe-multisend-subcall',
+      depth + 1,
+      `${path}.${index}`,
+      state,
+      null,
+    );
+    if (child === null) {
+      budgetTruncated = true;
+      break;
+    }
+    child.callOperation = slot.operation === 1 ? 'delegatecall' : 'call';
+    node.children.push(child);
+  }
+
+  finishExpansion(node, {
+    arrayTruncated: capped,
+    budgetTruncated,
+    expected: slots.length,
+    actual: node.children.length,
+    state,
+  });
+}
+
+/**
+ * Uniswap Universal Router execute(bytes commands, bytes[] inputs[, uint256 deadline]):
+ * commandId = byte & 0x3f; high bit 0x80 = FLAG_ALLOW_REVERT.
+ */
+function expandUniversalRouter(
+  node: CallNode,
+  decoded: DecodedCall,
+  depth: number,
+  path: string,
+  state: TreeState,
+): void {
+  const commandsRaw = readString(decoded.args[0]) ?? '0x';
+  const commandsHex = normalizeHex(commandsRaw);
+  const rawInputs = asArray(decoded.args[1]);
+  const inputs = rawInputs.map((item) => (typeof item === 'string' ? item : '0x'));
+  node.params = containerParams(decoded, inputs.length, state.limits);
+
+  if (commandsHex === null) {
+    node.decodeStatus = 'partial';
+    addWarningOnce(node, {
+      code: 'child-decode-failed',
+      detail: 'universal-router-invalid-commands',
+    });
+    return;
+  }
+
+  const commandCount = isEmptyHex(commandsHex) ? 0 : (commandsHex.length - 2) / 2;
+  const mismatch = commandCount !== inputs.length;
+  if (mismatch) {
+    node.decodeStatus = 'partial';
+    addWarningOnce(node, {
+      code: 'child-decode-failed',
+      detail: 'universal-router-length-mismatch',
+    });
+  }
+
+  const totalItems = Math.min(commandCount, inputs.length);
+  if (totalItems === 0) return;
+
+  const capped = totalItems > state.limits.maxArrayItems;
+  const visibleCount = capped ? state.limits.maxArrayItems : totalItems;
+  if (!canExpandChildren(depth, state)) {
+    markRecursionStopped(node, 'max-depth');
+    return;
+  }
+
+  let budgetTruncated = false;
+  for (let index = 0; index < visibleCount; index += 1) {
+    if (state.nodeCount >= state.limits.maxNodes) {
+      state.truncated = true;
+      budgetTruncated = true;
+      break;
+    }
+
+    const cmdByte = Number.parseInt(
+      commandsHex.slice(2 + index * 2, 4 + index * 2),
+      16,
+    );
+    const allowRevert = (cmdByte & 0x80) !== 0;
+    const commandId = cmdByte & 0x3f;
+    const inputRaw = inputs[index];
+    const inputHex = normalizeHex(inputRaw) ?? inputRaw;
+
+    const child = createNode(
+      inputHex,
+      'universal-router-command',
+      depth + 1,
+      `${path}.${index}`,
+      state,
+      allowRevert,
+    );
+    child.target = node.target;
+    child.selector = `0x${commandId.toString(16).padStart(2, '0')}`;
+
+    const def = UNIVERSAL_ROUTER_COMMANDS[commandId];
+    if (!def) {
+      child.decodeStatus = 'unknown';
+      node.children.push(child);
+      continue;
+    }
+
+    child.functionName = def.name;
+    child.signature = `${def.name}(${def.signature})`;
+    if (!normalizeHex(inputRaw)) {
+      child.decodeStatus = 'malformed';
+      addWarningOnce(child, {
+        code: 'child-decode-failed',
+        detail: 'invalid-hex',
+      });
+      node.children.push(child);
+      continue;
+    }
+
+    try {
+      const decodedArgs = decodeAbiParameters(
+        def.params as readonly AbiParameter[],
+        inputHex as `0x${string}`,
+      );
+      child.params = formatParams(
+        def.params as readonly { name?: string; type: string }[],
+        decodedArgs,
+        state.limits,
+      );
+      child.decodeStatus = 'decoded';
+
+      if (commandId === 0x0a) {
+        child.target = PERMIT2_ADDRESS.toLowerCase();
+        child.selector = toFunctionSelector(PERMIT2_PERMIT_ABIS[0]);
+        child.permit2 = extractPermit2Fields('allowance-single', [undefined, decodedArgs[0]]);
+      } else if (commandId === 0x03) {
+        child.target = PERMIT2_ADDRESS.toLowerCase();
+        child.selector = toFunctionSelector(PERMIT2_PERMIT_ABIS[1]);
+        child.permit2 = extractPermit2Fields('allowance-batch', [undefined, decodedArgs[0]]);
+      } else if (
+        commandId === 0x02 ||
+        commandId === 0x04 ||
+        commandId === 0x05 ||
+        commandId === 0x06
+      ) {
+        const tokenAddr = readString(decodedArgs[0]);
+        if (tokenAddr && tokenAddr.toLowerCase() !== zeroAddress) {
+          child.target = tokenAddr.toLowerCase();
+        }
+      }
+    } catch {
+      child.decodeStatus = 'signature-only';
+    }
+
+    node.children.push(child);
+  }
+
+  finishExpansion(node, {
+    arrayTruncated: capped,
+    budgetTruncated,
+    expected: totalItems,
+    actual: node.children.length,
+    state,
+  });
 }
 
 /** execute(address,uint256,bytes)：单个内部调用。 */

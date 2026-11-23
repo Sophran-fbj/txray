@@ -332,11 +332,14 @@ export const messages = {
           'multicall3-aggregate3Value': 'Multicall3 · aggregate3Value 批量调用（带主链币）',
           'multicall-bytes': 'multicall(bytes[]) 批量调用',
           'safe-execTransaction': 'Safe · execTransaction',
+          'safe-multiSend': 'Safe · MultiSend 批量打包',
           'account-execute': '智能账户 · execute',
           'account-executeBatch': '智能账户 · executeBatch 批量执行',
           'entrypoint-handleOps': 'ERC-4337 EntryPoint · handleOps',
           'entrypoint-handleOps-legacy': 'ERC-4337 EntryPoint · handleOps（v0.6 旧布局）',
           'entrypoint-userOperation': 'UserOperation',
+          'uniswap-universal-router': 'Uniswap Universal Router · execute',
+          'uniswap-universal-router-deadline': 'Uniswap Universal Router · execute（含截止时间）',
         },
         identification: {
           'canonical-address-and-abi': '识别依据：官方部署地址 + 官方 ABI 形状均匹配',
@@ -348,6 +351,10 @@ export const messages = {
         identificationNotes: {
           'safe-selector-shared':
             '同名选择器理论上也可能出现在非 Safe 合约上；这里按 ABI 形状识别，不据此断言合约身份。',
+          'multisend-address-mismatch':
+            '目标地址不是已知官方 Safe MultiSend v1.4.1 部署地址，请核实该打包合约。',
+          'universal-router-address-unknown':
+            '目标地址不是已知官方 Universal Router 部署地址，请核实该路由合约身份。',
           'multicall-bytes-shared':
             '该选择器被多个合约使用（如 Uniswap 路由、MakerDAO Multicall）；子调用在容器合约自身上下文执行，具体语义取决于实现。',
           'canonical-address-mismatch':
@@ -858,11 +865,14 @@ export const messages = {
           'multicall3-aggregate3Value': 'Multicall3 · aggregate3Value batch (with native value)',
           'multicall-bytes': 'multicall(bytes[]) batch',
           'safe-execTransaction': 'Safe · execTransaction',
+          'safe-multiSend': 'Safe · MultiSend bundle',
           'account-execute': 'Smart account · execute',
           'account-executeBatch': 'Smart account · executeBatch',
           'entrypoint-handleOps': 'ERC-4337 EntryPoint · handleOps',
           'entrypoint-handleOps-legacy': 'ERC-4337 EntryPoint · handleOps (v0.6 legacy layout)',
           'entrypoint-userOperation': 'UserOperation',
+          'uniswap-universal-router': 'Uniswap Universal Router · execute',
+          'uniswap-universal-router-deadline': 'Uniswap Universal Router · execute (with deadline)',
         },
         identification: {
           'canonical-address-and-abi': 'Identified by canonical deployment address + official ABI shape',
@@ -874,6 +884,10 @@ export const messages = {
         identificationNotes: {
           'safe-selector-shared':
             'The same selector could theoretically appear on a non-Safe contract. Identification is shape-based and does not assert contract identity.',
+          'multisend-address-mismatch':
+            'The target is not a known canonical Safe MultiSend v1.4.1 address. Verify the contract independently.',
+          'universal-router-address-unknown':
+            'The target is not a known canonical Universal Router address. Verify the router contract independently.',
           'multicall-bytes-shared':
             'Multiple contracts use this selector (Uniswap routers, MakerDAO Multicall, ...). Subcalls execute in the container contract\'s own context; exact semantics depend on the implementation.',
           'canonical-address-mismatch':

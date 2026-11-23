@@ -35,10 +35,12 @@ export type SourceKind =
   | 'multicall3-subcall'
   | 'multicall-bytes-subcall'
   | 'safe-inner-call'
+  | 'safe-multisend-subcall'
   | 'account-execute-inner-call'
   | 'account-executeBatch-subcall'
   | 'userop-operation'
-  | 'userop-call-data';
+  | 'userop-call-data'
+  | 'universal-router-command';
 
 /** 已知调用容器类型。 */
 export type ContainerKind =
@@ -46,11 +48,14 @@ export type ContainerKind =
   | 'multicall3-aggregate3Value'
   | 'multicall-bytes'
   | 'safe-execTransaction'
+  | 'safe-multiSend'
   | 'account-execute'
   | 'account-executeBatch'
   | 'entrypoint-handleOps'
   | 'entrypoint-handleOps-legacy'
-  | 'entrypoint-userOperation';
+  | 'entrypoint-userOperation'
+  | 'uniswap-universal-router'
+  | 'uniswap-universal-router-deadline';
 
 /** 递归停止的具体原因。 */
 export type StopReason =
@@ -133,10 +138,12 @@ export interface ContainerInfo {
    */
   note?:
     | 'safe-selector-shared'
+    | 'multisend-address-mismatch'
     | 'multicall-bytes-shared'
     | 'canonical-address-mismatch'
     | 'entrypoint-address-unknown'
-    | 'entrypoint-layout-mismatch';
+    | 'entrypoint-layout-mismatch'
+    | 'universal-router-address-unknown';
 }
 
 /** ERC-4337 UserOperation 摘要信息（挂在 UserOperation 节点上）。 */
@@ -186,8 +193,10 @@ export interface CallNode {
    * 字段位于嵌套 tuple 中，扁平 params 拿不到）。deadline 为秒的十进制字符串。
    */
   permit2: { spender: string | null; deadline: string | null } | null;
-  /** 容器槽位声明的 allowFailure（aggregate3 系）；其他情况为 null。 */
+  /** 容器槽位声明的 allowFailure（aggregate3 系 / Universal Router）；其他情况为 null。 */
   allowFailure: boolean | null;
+  /** Safe MultiSend 子调用的操作类型（CALL / DELEGATECALL）。 */
+  callOperation?: 'call' | 'delegatecall';
 }
 
 export interface DecodeLimits {
