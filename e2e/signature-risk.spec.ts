@@ -33,4 +33,11 @@ test('an expired field does not turn a permit into a low-risk verdict', async ({
   await expect(page.locator('.alert-error').filter({ hasText: 'ERC-20 permit 授权' }))
     .toBeVisible();
   await expect(page.getByText(/不能据此认定签名已失效或安全/)).toBeVisible();
+  await expect(page.getByText(/（已过期）/)).toBeVisible();
+
+  payload.message.deadline = (2n ** 256n - 1n).toString();
+  await input.fill(JSON.stringify(payload));
+  await page.getByRole('button', { name: '分析', exact: true }).click();
+  await expect(page.getByText(/截止时间在极远未来/)).toBeVisible();
+  await expect(page.getByText(/Invalid Date/)).toHaveCount(0);
 });

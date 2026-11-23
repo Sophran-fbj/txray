@@ -1,6 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeTypedData } from './analyzer';
 
+describe('deadline bounds', () => {
+  it.each([(2n ** 48n - 1n).toString(), (2n ** 256n - 1n).toString()])(
+    'keeps %s as a finite future timestamp outside the Date range',
+    (deadline) => {
+      const result = analyzeTypedData(JSON.stringify({ message: { deadline } }));
+      expect(result.findings).toContainEqual(expect.objectContaining({
+        kind: 'deadline', value: deadline, expired: false, severity: 'medium',
+        deadline: { dateMs: undefined, daysRemaining: undefined },
+      }));
+    },
+  );
+
+  it('handles zero and rejects values outside uint256', () => {
+    const deadlineZero = analyzeTypedData(JSON.stringify({ message: { deadline: '0' } }));
+    expect(deadlineZero.findings[0]).toMatchObject({ expired: true, deadline: { dateMs: 0 } });
+    const beyondUint = analyzeTypedData(JSON.stringify({ message: { deadline: (2n ** 256n).toString() } }));
+    expect(beyondUint.findings[0].deadline).toBeUndefined();
+  });
+
+  it('does not call the uint160 maximum unlimited for a declared uint256 amount', () => {
+    const value = (2n ** 160n - 1n).toString();
+    const result = analyzeTypedData(JSON.stringify({
+      primaryType: 'Transfer', types: { Transfer: [{ name: 'value', type: 'uint256' }] }, message: { value },
+    }));
+    expect(result.findings[0]).toMatchObject({ value, severity: 'medium', maximumAmountType: undefined });
+  });
+});
+
 const MAX_UINT256 =
   '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 

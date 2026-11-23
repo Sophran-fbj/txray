@@ -303,8 +303,9 @@ function AnalysisView({ data }: { data: SignatureAnalysis }) {
 }
 
 function FindingRow({ finding }: { finding: FieldFinding }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const copy = t.signatureRisk;
+  const value = formatFindingValue(finding, locale, copy);
 
   return (
     <tr>
@@ -316,7 +317,7 @@ function FindingRow({ finding }: { finding: FieldFinding }) {
           <div className="mt-1 font-mono text-xs text-base-content/50">{finding.path}</div>
         )}
       </td>
-      <td className="max-w-sm break-all font-mono text-xs">{finding.value}</td>
+      <td className="max-w-sm break-all font-mono text-xs">{value}</td>
       <td className="text-sm text-base-content/70">
         {finding.kind === 'amount' && finding.severity === 'high'
           ? `${copy.findingExplains.amount} ${copy.findingExplains.amountUnlimited}`
@@ -324,6 +325,19 @@ function FindingRow({ finding }: { finding: FieldFinding }) {
       </td>
     </tr>
   );
+}
+
+function formatFindingValue(
+  finding: FieldFinding,
+  locale: 'zh' | 'en',
+  copy: ReturnType<typeof useI18n>['t']['signatureRisk'],
+): string {
+  if (finding.maximumAmountType) return copy.maximumAmount(finding.maximumAmountType);
+  if (!finding.deadline) return finding.value;
+  const { dateMs, daysRemaining } = finding.deadline;
+  if (dateMs === undefined) return copy.deadlineOutsideDateRange(finding.value);
+  const date = new Date(dateMs).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US');
+  return finding.expired ? copy.deadlineExpired(date) : copy.deadlineRemaining(date, daysRemaining ?? 0);
 }
 
 function InfoCard({

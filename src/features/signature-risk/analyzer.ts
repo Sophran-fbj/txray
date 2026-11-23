@@ -26,6 +26,8 @@ export interface FieldFinding {
   explain: string;
   path?: string;
   expired?: boolean;
+  maximumAmountType?: string;
+  deadline?: { dateMs?: number; daysRemaining?: number };
 }
 
 export interface SignatureAnalysis {
@@ -66,6 +68,8 @@ interface TypedLeaf {
 const MAX_UINT160 = (2n ** 160n - 1n).toString();
 const MAX_UINT256 = (2n ** 256n - 1n).toString();
 const MAX_SCHEMA_DEPTH = 16;
+const MAX_DATE_SECONDS = 8_640_000_000_000n;
+const SECONDS_PER_DAY = 86_400n;
 
 export function analyzeTypedData(input: string): SignatureAnalysis {
   const typedData = normalizeTypedDataShape(parseJson(input));
@@ -447,13 +451,14 @@ function amountFinding(value: unknown, type: string | undefined, path: string): 
   const declaredMax = maxValueForUint(type);
   const isUnlimited =
     numeric !== undefined &&
-    (numeric === declaredMax || numeric.toString() === MAX_UINT160 || numeric.toString() === MAX_UINT256);
+    (type ? numeric === declaredMax : numeric.toString() === MAX_UINT160 || numeric.toString() === MAX_UINT256);
   const isZero = numeric === 0n;
   const maxType = type ?? (numeric?.toString() === MAX_UINT160 ? 'uint160' : numeric?.toString() === MAX_UINT256 ? 'uint256' : 'integer');
   return {
     label: 'Amount',
     kind: 'amount',
     value: isUnlimited ? `Unlimited (${maxType} max)` : text,
+    maximumAmountType: isUnlimited ? maxType : undefined,
     severity: isUnlimited ? 'high' : isZero ? 'low' : 'medium',
     explain: isUnlimited
       ? 'Unlimited amount means the spender may move the full token balance until the approval is revoked or expires.'
@@ -484,8 +489,8 @@ function parseUnsignedInteger(value: string): bigint | undefined {
 
 function deadlineFinding(value: unknown, path: string): FieldFinding {
   const text = stringifyValue(value);
-  const seconds = Number(text);
-  if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+  const seconds = typeof value === 'number' && !Number.isSafeInteger(value) ? undefined : parseUnsignedInteger(text);
+  if (seconds === undefined || seconds > BigInt(MAX_UINT256)) {
     return {
       label: 'Deadline',
       kind: 'deadline',
@@ -496,15 +501,18 @@ function deadlineFinding(value: unknown, path: string): FieldFinding {
     };
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const days = Math.ceil((seconds - now) / 86400);
-  const expired = seconds <= now;
-  const farFuture = days > 365;
-  const date = new Date(seconds * 1000).toLocaleString();
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const expired = seconds < now;
+  const farFuture = seconds - now > 365n * SECONDS_PER_DAY;
+  const dateMs = seconds <= MAX_DATE_SECONDS ? Number(seconds * 1000n) : undefined;
+  const daysRemaining = dateMs !== undefined && !expired
+    ? Number((seconds - now + SECONDS_PER_DAY - 1n) / SECONDS_PER_DAY)
+    : undefined;
   return {
     label: 'Deadline',
     kind: 'deadline',
-    value: expired ? `${date} (expired)` : `${date} (${days} days)`,
+    value: text,
+    deadline: { dateMs, daysRemaining },
     severity: expired ? 'unknown' : farFuture ? 'medium' : 'low',
     explain: expired
       ? 'This deadline has passed, but this tool cannot verify how the receiving contract handles it.'
