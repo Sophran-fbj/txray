@@ -48,8 +48,11 @@ describe('API input boundaries', () => {
       expect(url.hostname).toBe('api.etherscan.io');
       expect(url.searchParams.get('chainid')).toBe('8453');
       expect(url.searchParams.get('address')).toBe(address);
-      expect(url.searchParams.get('action')).toBe('getabi');
-      return Response.json({ status: '1', result: JSON.stringify(abi) });
+      expect(url.searchParams.get('action')).toBe('getsourcecode');
+      return Response.json({
+        status: '1',
+        result: [{ ABI: JSON.stringify(abi), Proxy: '0', Implementation: '' }],
+      });
     });
     vi.stubGlobal('fetch', fetchMock);
     const response = await getContractAbi(request(`/api/contract-abi?chainId=8453&address=${address}`, 'abi-verified'));
@@ -57,10 +60,76 @@ describe('API input boundaries', () => {
     await expect(response.json()).resolves.toEqual({ status: 'verified', functions: abi });
   });
 
+  it('resolves proxy implementation ABI in one hop and guards against self-proxies', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-key';
+    const proxy = '0x0000000000000000000000000000000000000010';
+    const impl = '0x0000000000000000000000000000000000000020';
+    const proxyAbi = [{ type: 'function', name: 'implementation', inputs: [], outputs: [{ type: 'address' }], stateMutability: 'view' }];
+    const implAbi = [{ type: 'function', name: 'approve', inputs: [{ type: 'address', name: 'spender' }, { type: 'uint256', name: 'amount' }], outputs: [{ type: 'bool' }], stateMutability: 'nonpayable' }];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get('action') === 'getsourcecode') {
+        const target = url.searchParams.get('address');
+        return Response.json({
+          status: '1',
+          result: [{
+            ABI: JSON.stringify(proxyAbi),
+            Proxy: '1',
+            Implementation: target?.toLowerCase() === proxy.toLowerCase() ? impl : proxy,
+          }],
+        });
+      }
+      expect(url.searchParams.get('action')).toBe('getabi');
+      expect(url.searchParams.get('address')).toBe(impl);
+      return Response.json({ status: '1', result: JSON.stringify(implAbi) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getContractAbi(request(`/api/contract-abi?chainId=1&address=${proxy}`, 'abi-proxy'));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: 'verified',
+      functions: proxyAbi,
+      implementation: { address: impl, functions: implAbi },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // Self-proxy does not trigger an extra getabi call.
+    fetchMock.mockClear();
+    const selfProxy = '0x0000000000000000000000000000000000000030';
+    fetchMock.mockResolvedValueOnce(Response.json({
+      status: '1',
+      result: [{ ABI: JSON.stringify(proxyAbi), Proxy: '1', Implementation: selfProxy }],
+    }));
+    const selfResponse = await getContractAbi(request(`/api/contract-abi?chainId=1&address=${selfProxy}`, 'abi-self-proxy'));
+    expect(selfResponse.status).toBe(200);
+    await expect(selfResponse.json()).resolves.toEqual({ status: 'verified', functions: proxyAbi });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps proxy verified status when implementation ABI is unverified or fails', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-key';
+    const proxy = '0x0000000000000000000000000000000000000011';
+    const impl = '0x0000000000000000000000000000000000000021';
+    const proxyAbi = [{ type: 'function', name: 'upgradeTo', inputs: [{ type: 'address', name: 'next' }], outputs: [], stateMutability: 'nonpayable' }];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({
+        status: '1',
+        result: [{ ABI: JSON.stringify(proxyAbi), Proxy: '1', Implementation: impl }],
+      }))
+      .mockResolvedValueOnce(Response.json({ status: '0', result: 'Contract source code not verified' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getContractAbi(request(`/api/contract-abi?chainId=1&address=${proxy}`, 'abi-proxy-unverified-impl'));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: 'verified', functions: proxyAbi });
+  });
+
   it('distinguishes unverified contracts from upstream errors', async () => {
     process.env.ETHERSCAN_API_KEY = 'test-key';
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(Response.json({ status: '0', result: 'Contract source code not verified' }))
+      .mockResolvedValueOnce(Response.json({ status: '1', result: [{ ABI: 'Contract source code not verified', Proxy: '0', Implementation: '' }] }))
       .mockResolvedValueOnce(Response.json({ status: '0', result: 'Rate limit reached' }));
     vi.stubGlobal('fetch', fetchMock);
     const endpoint = '/api/contract-abi?chainId=1&address=0x0000000000000000000000000000000000000001';

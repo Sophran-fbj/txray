@@ -1,12 +1,25 @@
-import { toFunctionSelector, toFunctionSignature, type AbiFunction, type AbiParameter, type Address } from 'viem';
+import { getAddress, isAddress, toFunctionSelector, toFunctionSignature, type AbiFunction, type AbiParameter, type Address } from 'viem';
 import { isRecord } from '@/lib/validation';
 
-export type VerifiedAbiResult = { status: 'verified'; functions: AbiFunction[] } |
-  { status: 'unverified' | 'unavailable' };
+export interface VerifiedImplementation {
+  address: Address;
+  functions: AbiFunction[];
+}
+
+export type VerifiedAbiResult =
+  | {
+      status: 'verified';
+      functions: AbiFunction[];
+      implementation?: VerifiedImplementation;
+    }
+  | { status: 'unverified' | 'unavailable' };
+
 export type ApprovalInterface = 'erc20' | 'erc721';
+
 export interface VerifiedCall {
   abi: AbiFunction;
   approvalInterface?: ApprovalInterface;
+  viaProxyImplementation?: Address;
 }
 
 const MAX_ABI_ITEMS = 2048;
@@ -61,6 +74,28 @@ export function selectVerifiedFunction(functions: readonly AbiFunction[], select
   return match;
 }
 
+export function matchVerifiedCall(
+  contractAbi: VerifiedAbiResult | undefined,
+  selector: string,
+): { abi: AbiFunction; functions: AbiFunction[]; viaProxyImplementation?: Address } | undefined {
+  if (contractAbi?.status !== 'verified') return undefined;
+  if (contractAbi.implementation) {
+    const implMatch = selectVerifiedFunction(contractAbi.implementation.functions, selector);
+    if (implMatch) {
+      return {
+        abi: implMatch,
+        functions: contractAbi.implementation.functions,
+        viaProxyImplementation: contractAbi.implementation.address,
+      };
+    }
+  }
+  const directMatch = selectVerifiedFunction(contractAbi.functions, selector);
+  if (directMatch) {
+    return { abi: directMatch, functions: contractAbi.functions };
+  }
+  return undefined;
+}
+
 export function getApprovalInterface(abi: AbiFunction, functions: readonly AbiFunction[]): ApprovalInterface | undefined {
   if (toFunctionSignature(abi) !== 'approve(address,uint256)') return undefined;
   const signatures = new Map(functions.map((item) => [toFunctionSignature(item), item.outputs]));
@@ -91,8 +126,24 @@ export async function fetchVerifiedAbi(chainId: number, address: Address, signal
     if (isRecord(result)) {
       if (result.status === 'unverified') return { status: 'unverified' };
       if (result.status === 'verified') {
-        const functions = parseVerifiedFunctions(result.functions);
-        if (functions) return { status: 'verified', functions };
+        const functions = result.functions === undefined ? [] : parseVerifiedFunctions(result.functions);
+        let implementation: VerifiedImplementation | undefined;
+        if (isRecord(result.implementation) && typeof result.implementation.address === 'string' && isAddress(result.implementation.address)) {
+          const implFunctions = parseVerifiedFunctions(result.implementation.functions);
+          if (implFunctions) {
+            implementation = {
+              address: getAddress(result.implementation.address),
+              functions: implFunctions,
+            };
+          }
+        }
+        if (functions && (functions.length > 0 || implementation || result.functions !== undefined)) {
+          return {
+            status: 'verified',
+            functions,
+            ...(implementation ? { implementation } : {}),
+          };
+        }
       }
     }
   } catch {

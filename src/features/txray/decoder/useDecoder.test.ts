@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { encodeFunctionData, parseAbi, parseAbiItem, type PublicClient } from 'viem';
 import { buildCallTree } from './call-tree/decode';
+import { NESTED_MULTICALL_EXAMPLE } from './examples';
+import { encodeSafeExecTransaction } from './call-tree/fixtures';
 import { decodeCalldata, decodeInput, isMaxUintValue } from './useDecoder';
 import { parseVerifiedFunctions } from './verifiedAbi';
 
@@ -172,5 +174,43 @@ describe('verified target ABI', () => {
     expect(decoded).toMatchObject({ signatureSource: 'verified', functionName: 'configure' });
     expect(decoded.params[0]).toMatchObject({ name: 'options', type: 'tuple[]' });
     expect(decoded.params[0].value).toContain('"weight":"7"');
+  });
+
+  it('decodes built-in container ABIs locally without calling OpenChain', async () => {
+    const lookup = vi.fn();
+    const aggregate = await decodeCalldata(NESTED_MULTICALL_EXAMPLE, lookup);
+    expect(aggregate).toMatchObject({ signatureSource: 'local', functionName: 'aggregate3' });
+
+    const safeData = encodeSafeExecTransaction({
+      to: target,
+      operation: 0,
+      data: APPROVE_MAX,
+    });
+    const safe = await decodeCalldata(safeData, lookup);
+    expect(safe).toMatchObject({ signatureSource: 'local', functionName: 'execTransaction' });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('resolves calls through proxy implementation ABIs and preserves approval interface typing', async () => {
+    const impl = '0x0000000000000000000000000000000000000099';
+    const proxyAbi = parseAbi(['function implementation() view returns (address)']);
+    const lookup = vi.fn();
+    const decoded = await decodeCalldata(APPROVE_MAX, lookup, {
+      target,
+      contractAbi: {
+        status: 'verified',
+        functions: [...proxyAbi],
+        implementation: { address: impl, functions: [...erc20] },
+      },
+    });
+    expect(decoded).toMatchObject({
+      signatureSource: 'verified',
+      abiStatus: 'matched',
+      explainKey: 'erc20Approval',
+      danger: 'high',
+    });
+    expect(decoded.verifiedCall?.viaProxyImplementation).toBe(impl);
+    expect(decoded.verifiedCall?.approvalInterface).toBe('erc20');
+    expect(lookup).not.toHaveBeenCalled();
   });
 });

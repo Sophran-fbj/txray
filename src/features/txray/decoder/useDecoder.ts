@@ -21,7 +21,14 @@ import {
 } from './signatures';
 import { isRecord } from '@/lib/validation';
 import { classifyApprovalAmount, type ApprovalAmountScope } from '@/lib/web3/approvalAmount';
-import { fetchVerifiedAbi, getApprovalInterface, selectVerifiedFunction, type VerifiedAbiResult, type VerifiedCall } from './verifiedAbi';
+import { findLocalBuiltinAbis } from './call-tree/abis';
+import {
+  fetchVerifiedAbi,
+  getApprovalInterface,
+  matchVerifiedCall,
+  type VerifiedAbiResult,
+  type VerifiedCall,
+} from './verifiedAbi';
 export { isMaxUintValue } from '@/lib/web3/approvalAmount';
 
 export interface DecodedParam {
@@ -139,18 +146,45 @@ export async function decodeCalldata(
 
   const selector = calldata.slice(0, 10).toLowerCase();
   const local = KNOWN_SIGNATURES[selector];
-  const functions = context?.contractAbi?.status === 'verified' ? context.contractAbi.functions : undefined;
-  const candidate = functions && selectVerifiedFunction(functions, selector);
-  const verifiedParams = candidate && decodeParams(candidate, calldata);
-  const verifiedCall = candidate && verifiedParams && functions ? {
-    abi: candidate, approvalInterface: getApprovalInterface(candidate, functions),
-  } : undefined;
-  const signature = verifiedCall ? toFunctionSignature(verifiedCall.abi) : local?.signature ?? (await lookupSignature(selector));
-  const item = verifiedCall?.abi ?? parseFunctionSignature(signature);
-  const decodedParams = verifiedParams ?? (item && decodeParams(item, calldata));
+  const verifiedMatch = matchVerifiedCall(context?.contractAbi, selector);
+  const verifiedParams = verifiedMatch && decodeParams(verifiedMatch.abi, calldata);
+  const verifiedCall: VerifiedCall | undefined =
+    verifiedMatch && verifiedParams
+      ? {
+          abi: verifiedMatch.abi,
+          approvalInterface: getApprovalInterface(verifiedMatch.abi, verifiedMatch.functions),
+          viaProxyImplementation: verifiedMatch.viaProxyImplementation,
+        }
+      : undefined;
+
+  let localBuiltinAbi: AbiFunction | undefined;
+  let localBuiltinParams: DecodedParam[] | undefined;
+  if (!verifiedCall && !local) {
+    for (const candidate of findLocalBuiltinAbis(selector)) {
+      const decoded = decodeParams(candidate, calldata);
+      if (decoded) {
+        localBuiltinAbi = candidate;
+        localBuiltinParams = decoded;
+        break;
+      }
+    }
+  }
+
+  const signature = verifiedCall
+    ? toFunctionSignature(verifiedCall.abi)
+    : local?.signature ??
+      (localBuiltinAbi ? toFunctionSignature(localBuiltinAbi) : await lookupSignature(selector));
+  const item = verifiedCall?.abi ?? localBuiltinAbi ?? parseFunctionSignature(signature);
+  const decodedParams = verifiedParams ?? localBuiltinParams ?? (item && decodeParams(item, calldata));
   const params = decodedParams ?? [];
   const functionName = item && decodedParams ? item.name : null;
-  const signatureSource = verifiedCall ? 'verified' : local ? 'local' : signature ? 'database' : 'unknown';
+  const signatureSource = verifiedCall
+    ? 'verified'
+    : local || (localBuiltinAbi && localBuiltinParams)
+      ? 'local'
+      : signature
+        ? 'database'
+        : 'unknown';
   const abiStatus = verifiedCall ? 'matched' : context?.contractAbi?.status === 'verified' ? 'no-match' : context?.contractAbi?.status;
   const known = functionName && (!verifiedCall || !local || signature === toFunctionSignature(`function ${local.signature}`)) ? local : undefined;
 

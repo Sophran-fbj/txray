@@ -36,3 +36,35 @@ test('decodes a pasted approval against the supplied target ABI and selected net
   await expect(page.locator('tbody tr').filter({ hasText: 'nftId' })).toHaveCount(0);
   expect(requests).toEqual([`8453:${address}`, `1:${address}`]);
 });
+
+test('decodes calls through a verified proxy implementation ABI and discloses the implementation address', async ({ page }) => {
+  const proxy = '0x0000000000000000000000000000000000000011';
+  const implementation = '0x0000000000000000000000000000000000000022';
+  const erc20 = parseAbi([
+    'function approve(address spender, uint256 allowanceValue) returns (bool)',
+    'function allowance(address,address) view returns (uint256)',
+    'function balanceOf(address) view returns (uint256)',
+    'function transfer(address,uint256) returns (bool)',
+    'function transferFrom(address,address,uint256) returns (bool)',
+  ]);
+  const data = encodeFunctionData({ abi: erc20, functionName: 'approve', args: [proxy, 50n] });
+
+  await page.route('**/api/contract-abi?**', async (route) => {
+    await route.fulfill({
+      json: {
+        status: 'verified',
+        functions: [],
+        implementation: { address: implementation, functions: erc20 },
+      },
+    });
+  });
+
+  await page.goto('/tools/txray/decoder');
+  await page.getByRole('button', { name: 'calldata', exact: true }).click();
+  await page.getByLabel('calldata', { exact: true }).fill(data);
+  await page.getByLabel('目标合约地址（可选）').fill(proxy);
+
+  await expect(page.getByText(/经代理实现合约 ABI 解码/)).toBeVisible();
+  await expect(page.getByRole('link', { name: `实现合约: ${implementation}` })).toBeVisible();
+  await expect(page.locator('tbody tr').filter({ hasText: 'allowanceValue' })).toHaveCount(1);
+});

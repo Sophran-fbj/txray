@@ -187,3 +187,19 @@ export function findContainerDefinitions(
 ): ContainerDefinition[] {
   return CONTAINER_DEFINITIONS.filter((def) => def.selector === selector);
 }
+
+/**
+ * 返回与选择器匹配的本地内置完整 ABI（容器 + Permit2），供单层解码离线优先使用，
+ * 避免对本地已定义的函数发起不必要的 OpenChain 网络查询。
+ */
+export function findLocalBuiltinAbis(selector: string): AbiFunction[] {
+  const normalized = selector.toLowerCase();
+  const abis: AbiFunction[] = findContainerDefinitions(normalized).map(
+    (def) => def.abi[0] as AbiFunction,
+  );
+  const permit2Profile = PERMIT2_FIELD_PROFILES[normalized];
+  if (permit2Profile) {
+    abis.push(PERMIT2_PERMIT_ABI_BY_PROFILE[permit2Profile]);
+  }
+  return abis;
+}

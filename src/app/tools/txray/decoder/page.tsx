@@ -304,6 +304,7 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
             {t.decoder.signatureSources[data.signatureSource]}
             {data.abiStatus && data.abiStatus !== 'matched' && ` · ${t.decoder.abiFallback[data.abiStatus]}`}
             {data.verifiedCall?.approvalInterface && ` · ${t.decoder.approvalInterfaces[data.verifiedCall.approvalInterface]}`}
+            {data.verifiedCall?.viaProxyImplementation && ` · ${t.decoder.proxyImplementationNote}`}
           </p>
         </div>
 
@@ -313,6 +314,23 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
             <div className="mt-0.5 flex items-center gap-1">
               <AddressLink address={data.to} chainId={chainId} />
               <CopyButton value={data.to} label={t.decoder.targetContract} />
+            </div>
+          </div>
+        )}
+
+        {data.verifiedCall?.viaProxyImplementation && (
+          <div>
+            <div className="text-xs text-base-content/70">{t.decoder.implementationAddress}</div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <AddressLink
+                address={data.verifiedCall.viaProxyImplementation}
+                chainId={chainId}
+                label={t.decoder.implementationAddress}
+              />
+              <CopyButton
+                value={data.verifiedCall.viaProxyImplementation}
+                label={t.decoder.implementationAddress}
+              />
             </div>
           </div>
         )}
@@ -489,14 +507,14 @@ function ParamRow({
   );
 }
 
-function AddressLink({ address, chainId }: { address: string; chainId: number }) {
+function AddressLink({ address, chainId, label }: { address: string; chainId: number; label?: string }) {
   const { t } = useI18n();
   return (
     <a
       href={explorerAddressUrl(chainId, address)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`${t.decoder.targetContract}: ${address}`}
+      aria-label={`${label ?? t.decoder.targetContract}: ${address}`}
       className="link link-hover rounded-sm break-all font-mono text-xs text-base-content/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
       {address}
