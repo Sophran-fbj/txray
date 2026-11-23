@@ -39,10 +39,10 @@ export function AppShell({
   return (
     <div className="flex min-h-screen flex-col bg-base-100 text-base-content">
       <header className="sticky top-0 z-30 border-b border-base-300/80 bg-base-100/90 backdrop-blur">
-        <div className={`mx-auto flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6 ${widthClass}`}>
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:px-6 md:gap-x-6">
           <Link
             href="/"
-            className="order-1 inline-flex items-center gap-2 rounded-lg px-1 py-0.5 text-base font-bold tracking-tight text-base-content transition hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            className="order-1 inline-flex shrink-0 items-center gap-2 rounded-lg px-1 py-0.5 text-base font-bold tracking-tight text-base-content transition hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           >
             <span className="inline-flex size-7 items-center justify-center rounded-lg border border-primary/30 bg-primary/12 text-primary">
               <svg
@@ -65,9 +65,9 @@ export function AppShell({
             <span>TxRay</span>
           </Link>
 
-          <div className="order-2 flex flex-wrap items-center justify-end gap-2 md:order-3">
-            <AppearanceControls />
+          <div className="order-2 ml-auto flex flex-wrap items-center justify-end gap-2 md:order-3">
             {headerRight}
+            <AppearanceControls />
           </div>
 
           <nav
@@ -100,7 +100,7 @@ export function AppShell({
       </main>
 
       <footer className="border-t border-base-300/60 bg-base-100">
-        <div className={`mx-auto flex w-full flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-base-content/65 sm:px-6 ${widthClass}`}>
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-base-content/65 sm:px-6">
           <span>{footerNote ?? `🔒 ${t.common.neverSeed}`}</span>
           <Link href="/articles" className="link link-hover text-base-content/70">
             {t.common.nav.articles}

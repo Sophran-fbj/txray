@@ -21,7 +21,7 @@ export function WalletButton() {
 
         if (!ready) {
           return (
-            <button className="btn btn-neutral btn-sm opacity-0" type="button">
+            <button className="btn btn-neutral btn-sm min-w-[5.25rem] opacity-0" type="button">
               ...
             </button>
           );
