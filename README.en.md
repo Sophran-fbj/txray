@@ -36,7 +36,7 @@ TxRay focuses on **detect + explain**:
 ### TxRay · Approval Check
 
 - Read ERC-20, ERC-721, and Permit2 approval history through a server-side Etherscan indexer. Each scan uses a fixed cutoff block and displays coverage for each event type. Users can resume ranges that reach the pagination budget and retry failed ranges individually.
-- Verify current allowances with chunked viem multicalls, filtering stale approvals without creating oversized RPC requests.
+- Verify current allowances with chunked viem multicalls and filter out stale approvals. Read each token's metadata and balance once per scan.
 - Distinguish maximum and large finite ERC-20 and Permit2 allowances.
 - Detect NFT `setApprovalForAll` collection-wide and ERC-721 token-specific approvals; verify the latter against current `ownerOf` / `getApproved` state rather than treating historical events as current.
 - Inspect Uniswap Permit2 internal allowances.

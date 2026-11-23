@@ -43,51 +43,53 @@ export async function enrichApprovals(
   owner: Address,
   current: CurrentApprovalState,
 ): Promise<EnrichedApprovals> {
-  const fungible = [...current.erc20, ...current.permit2];
-  const allNft = [...current.nft, ...current.nftToken];
+  const fungibleTokens = uniqueTokens([...current.erc20, ...current.permit2]);
+  const fungibleKeys = new Set(fungibleTokens.map((token) => token.toLowerCase()));
+  const nftTokens = uniqueTokens([...current.nft, ...current.nftToken])
+    .filter((token) => !fungibleKeys.has(token.toLowerCase()));
   const [metadata, balances, nftMetadata] = await Promise.all([
-    runInChunks<(typeof fungible)[number], unknown>(
-      fungible,
+    runInChunks<Address, unknown>(
+      fungibleTokens,
       MULTICALL_CHUNK_SIZE,
       (chunk) =>
         client.multicall({
           allowFailure: true,
-          contracts: chunk.flatMap((pair) => [
+          contracts: chunk.flatMap((token) => [
             {
-              address: pair.token,
+              address: token,
               abi: erc20Abi,
               functionName: 'symbol',
             } as const,
             {
-              address: pair.token,
+              address: token,
               abi: erc20Abi,
               functionName: 'decimals',
             } as const,
           ]),
         }),
     ),
-    runInChunks<(typeof fungible)[number], unknown>(
-      fungible,
+    runInChunks<Address, unknown>(
+      fungibleTokens,
       MULTICALL_CHUNK_SIZE,
       (chunk) =>
         client.multicall({
           allowFailure: true,
-          contracts: chunk.map((pair) => ({
-            address: pair.token,
+          contracts: chunk.map((token) => ({
+            address: token,
             abi: erc20Abi,
             functionName: 'balanceOf',
             args: [owner],
           })),
         }),
     ),
-    runInChunks<(typeof allNft)[number], unknown>(
-      allNft,
+    runInChunks<Address, unknown>(
+      nftTokens,
       MULTICALL_CHUNK_SIZE,
       (chunk) =>
         client.multicall({
           allowFailure: true,
-          contracts: chunk.map((pair) => ({
-            address: pair.token,
+          contracts: chunk.map((token) => ({
+            address: token,
             abi: erc721Abi,
             functionName: 'symbol' as const,
           })),
@@ -95,20 +97,29 @@ export async function enrichApprovals(
     ),
   ]);
 
-  const failedDecimals = fungible.filter(
-    (_, index) => readSuccessResult(metadata[index * 2 + 1]) === undefined,
-  ).length;
-  const failedBalances = balances.filter(
-    (result) => readBigIntResult(result) === undefined,
-  ).length;
+  const fungibleData = new Map(fungibleTokens.map((token, index) => [token.toLowerCase(), {
+    symbol: readSuccessResult(metadata[index * 2]),
+    decimals: readSuccessResult(metadata[index * 2 + 1]),
+    balance: readBigIntResult(balances[index]),
+  }]));
+  const nftSymbols = new Map(nftTokens.map((token, index) => [
+    token.toLowerCase(), readSuccessResult(nftMetadata[index]),
+  ]));
+  const tokenData = [...fungibleData.values()];
+  const failedDecimals = tokenData.filter((data) => data.decimals === undefined).length;
+  const failedBalances = tokenData.filter((data) => data.balance === undefined).length;
 
-  function readDisplay(index: number, rawAmount: bigint, upstream?: { allowance: bigint | undefined }): FungibleApprovalDisplay {
-    const token = fungible[index].token;
-    const symbolResult = readSuccessResult(metadata[index * 2]);
-    const decimalsResult = readSuccessResult(metadata[index * 2 + 1]);
-    const balance = readBigIntResult(balances[index]);
-    const symbol =
-      symbolResult !== undefined ? String(symbolResult) : shortAddress(token);
+  function readSymbol(token: Address): string {
+    const key = token.toLowerCase();
+    const result = fungibleData.get(key)?.symbol ?? nftSymbols.get(key);
+    return result !== undefined ? String(result) : shortAddress(token);
+  }
+
+  function readDisplay(token: Address, rawAmount: bigint, upstream?: { allowance: bigint | undefined }): FungibleApprovalDisplay {
+    const data = fungibleData.get(token.toLowerCase());
+    const symbol = readSymbol(token);
+    const balance = data?.balance;
+    const decimalsResult = data?.decimals;
     const decimals = decimalsResult !== undefined ? Number(decimalsResult) : null;
     const amountText =
       decimals === null
@@ -131,15 +142,15 @@ export async function enrichApprovals(
     };
   }
 
-  const erc20: Erc20Approval[] = current.erc20.map((pair, index) => ({
+  const erc20: Erc20Approval[] = current.erc20.map((pair) => ({
     kind: 'erc20',
     id: pairKey(pair.token, pair.spender),
     token: pair.token,
     spender: pair.spender,
     allowance: pair.allowance,
-    ...readDisplay(index, pair.allowance),
+    ...readDisplay(pair.token, pair.allowance),
   }));
-  const permit2: Permit2Approval[] = current.permit2.map((pair, index) => ({
+  const permit2: Permit2Approval[] = current.permit2.map((pair) => ({
     kind: 'permit2',
     id: `p2-${pairKey(pair.token, pair.spender)}`,
     token: pair.token,
@@ -147,32 +158,25 @@ export async function enrichApprovals(
     amount: pair.amount,
     expiration: pair.expiration,
     upstreamAllowance: current.permit2TokenAllowances[pair.token.toLowerCase()],
-    ...readDisplay(current.erc20.length + index, pair.amount, {
+    ...readDisplay(pair.token, pair.amount, {
       allowance: current.permit2TokenAllowances[pair.token.toLowerCase()],
     }),
   }));
-  const nft: NftApproval[] = current.nft.map((pair, index) => {
-    const symbolResult = readSuccessResult(nftMetadata[index]);
-    return {
-      kind: 'nft',
-      id: pairKey(pair.token, pair.spender),
-      token: pair.token,
-      spender: pair.spender,
-      symbol:
-        symbolResult !== undefined ? String(symbolResult) : shortAddress(pair.token),
-    };
-  });
-  const nftToken: NftTokenApproval[] = current.nftToken.map((pair, index) => {
-    const symbolResult = readSuccessResult(nftMetadata[current.nft.length + index]);
-    return {
-      kind: 'nft-token',
-      id: `nft-token-${pairKey(pair.token, pair.spender)}-${pair.tokenId}`,
-      token: pair.token,
-      spender: pair.spender,
-      tokenId: pair.tokenId,
-      symbol: symbolResult !== undefined ? String(symbolResult) : shortAddress(pair.token),
-    };
-  });
+  const nft: NftApproval[] = current.nft.map((pair) => ({
+    kind: 'nft',
+    id: pairKey(pair.token, pair.spender),
+    token: pair.token,
+    spender: pair.spender,
+    symbol: readSymbol(pair.token),
+  }));
+  const nftToken: NftTokenApproval[] = current.nftToken.map((pair) => ({
+    kind: 'nft-token',
+    id: `nft-token-${pairKey(pair.token, pair.spender)}-${pair.tokenId}`,
+    token: pair.token,
+    spender: pair.spender,
+    tokenId: pair.tokenId,
+    symbol: readSymbol(pair.token),
+  }));
 
   return {
     approvals: [...erc20, ...permit2, ...nft, ...nftToken].sort(
@@ -181,6 +185,10 @@ export async function enrichApprovals(
     failedDecimals,
     failedBalances,
   };
+}
+
+function uniqueTokens(pairs: readonly { token: Address }[]): Address[] {
+  return [...new Map(pairs.map(({ token }) => [token.toLowerCase(), token])).values()];
 }
 
 const pairKey = (token: Address, spender: Address) =>

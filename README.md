@@ -36,7 +36,7 @@ TxRay 的核心是 **检测 + 解释**：
 ### TxRay · 授权检查
 
 - 通过服务端 Etherscan 索引器读取 ERC-20、ERC-721 和 Permit2 授权历史。每次扫描固定截止区块，可查看各类事件的区间覆盖，继续扫描达到分页预算的区间，或单独重试请求失败的区间。
-- 用分块的 viem multicall 校验当前授权额度，过滤已经失效的历史授权，避免大地址产生超大 RPC 请求。
+- 用分块的 viem multicall 校验当前授权额度，过滤已经失效的历史授权。同一代币的元数据和余额在一次扫描中只读取一次。
 - 区分 ERC-20 和 Permit2 的类型最大额度与大额有限授权。
 - 检测 NFT `setApprovalForAll` 整集合授权和 ERC-721 单件 `Approval`；单件授权以当前 `ownerOf` / `getApproved` 校验，历史事件不直接当作现状。
 - 检查 Uniswap Permit2 内部授权，而不只看表层的 ERC-20 approve。

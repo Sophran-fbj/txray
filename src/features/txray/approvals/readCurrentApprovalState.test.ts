@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getAddress, zeroAddress, type PublicClient } from 'viem';
+import { decodeFunctionResult, encodeFunctionResult, getAddress, zeroAddress, type PublicClient } from 'viem';
 import type { ApprovalIndexPayload } from './approvalIndex';
 import { readCurrentApprovalState } from './readCurrentApprovalState';
-import { PERMIT2_ADDRESS } from './permit2';
+import { PERMIT2_ADDRESS, permit2Abi } from './permit2';
 
 const owner = getAddress('0x0000000000000000000000000000000000000001');
 const token = getAddress('0x0000000000000000000000000000000000000002');
@@ -34,8 +34,10 @@ describe('current ERC-721 token approvals', () => {
 
 describe('Permit2 underlying ERC-20 allowance', () => {
   it('reads the owner-to-Permit2 allowance for each active token', async () => {
+    const abi = { abi: permit2Abi, functionName: 'allowance' } as const;
+    const data = encodeFunctionResult({ ...abi, result: [100n, 4102444800, 0] });
     const multicall = vi.fn()
-      .mockResolvedValueOnce([{ status: 'success', result: [100n, 4102444800n, 0n] }])
+      .mockResolvedValueOnce([{ status: 'success', result: decodeFunctionResult({ ...abi, data }) }])
       .mockResolvedValueOnce([{ status: 'success', result: 3n }]);
     const client = { multicall } as unknown as PublicClient;
     const result = await readCurrentApprovalState(client, owner, {
@@ -43,6 +45,8 @@ describe('Permit2 underlying ERC-20 allowance', () => {
     });
 
     expect(result.permit2TokenAllowances[token.toLowerCase()]).toBe(3n);
+    expect(result.permit2).toEqual([{ token, spender, amount: 100n, expiration: 4102444800 }]);
+    expect(result.failedReads).toBe(0);
     expect(multicall).toHaveBeenCalledTimes(2);
     expect(multicall.mock.calls[1][0].contracts[0]).toMatchObject({
       address: token, functionName: 'allowance', args: [owner, PERMIT2_ADDRESS],

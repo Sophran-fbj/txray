@@ -20,12 +20,18 @@ export function readPermit2Result(
   ) {
     return undefined;
   }
-  const [amount, expiration, nonce] = result.result;
-  return typeof amount === 'bigint' &&
-    typeof expiration === 'bigint' &&
-    typeof nonce === 'bigint'
+  const [amount, rawExpiration, rawNonce] = result.result;
+  const expiration = parseUint48(rawExpiration);
+  const nonce = parseUint48(rawNonce);
+  return typeof amount === 'bigint' && expiration !== undefined && nonce !== undefined
     ? [amount, expiration, nonce]
     : undefined;
+}
+
+function parseUint48(value: unknown): bigint | undefined {
+  // viem represents small ABI integers such as uint48 as numbers.
+  const integer = typeof value === 'number' && Number.isSafeInteger(value) ? BigInt(value) : value;
+  return typeof integer === 'bigint' && integer >= 0n && integer < 2n ** 48n ? integer : undefined;
 }
 
 export function readSuccessResult(result: unknown): unknown {
