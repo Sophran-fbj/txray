@@ -110,12 +110,13 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   const fn = node.functionName;
   const selector = node.selector;
   const nowMs = options.nowMs;
+  const matchesKnownName = (knownName: string) => !node.verifiedAbi || fn === knownName;
 
   // The selector is shared by ERC-20 and ERC-721; the finding is conditional.
-  if (selector === '0x095ea7b3') {
-    const amount = paramByName(node, 'amountOrTokenId') ??
+  if (selector === '0x095ea7b3' && matchesKnownName('approve') && node.approvalInterface !== 'erc721') {
+    const amount = node.verifiedAbi ? node.params[1] : paramByName(node, 'amountOrTokenId') ??
       paramByName(node, 'amount') ?? paramByName(node, 'value');
-    const spender = paramByName(node, 'approvedOrSpender') ?? paramByName(node, 'spender');
+    const spender = node.verifiedAbi ? node.params[0] : paramByName(node, 'approvedOrSpender') ?? paramByName(node, 'spender');
     if (amount?.type === 'uint256' && /^\d+$/.test(amount.value)) {
       const scope = classifyApprovalAmount(BigInt(amount.value), 256);
       const evidence = { spender: spender?.value ?? 'unknown', amount: amount.value };
@@ -125,8 +126,8 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   }
 
   // increaseAllowance。
-  if (fn === 'increaseAllowance' || selector === '0x39509351') {
-    const addedValue = paramByName(node, 'addedValue');
+  if ((fn === 'increaseAllowance' || selector === '0x39509351') && matchesKnownName('increaseAllowance')) {
+    const addedValue = node.verifiedAbi ? node.params[1] : paramByName(node, 'addedValue');
     results.push(
       finding('erc20-increase-allowance', 'medium', node, {
         addedValue: addedValue?.value ?? 'unknown',
@@ -135,9 +136,9 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   }
 
   // setApprovalForAll(true)。
-  if (fn === 'setApprovalForAll' || selector === '0xa22cb465') {
-    const approved = paramByName(node, 'approved');
-    const operator = paramByName(node, 'operator');
+  if ((fn === 'setApprovalForAll' || selector === '0xa22cb465') && matchesKnownName('setApprovalForAll')) {
+    const approved = node.verifiedAbi ? node.params[1] : paramByName(node, 'approved');
+    const operator = node.verifiedAbi ? node.params[0] : paramByName(node, 'operator');
     if (approved?.value === 'true') {
       results.push(
         finding('nft-approval-for-all', 'high', node, {
@@ -148,9 +149,9 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   }
 
   // ERC-20 permit。
-  if (selector === ERC20_PERMIT_SELECTOR) {
-    const spender = paramByName(node, 'spender');
-    const deadline = paramByName(node, 'deadline');
+  if (selector === ERC20_PERMIT_SELECTOR && matchesKnownName('permit')) {
+    const spender = node.verifiedAbi ? node.params[1] : paramByName(node, 'spender');
+    const deadline = node.verifiedAbi ? node.params[3] : paramByName(node, 'deadline');
     results.push(
       finding('erc20-permit', 'high', node, {
         spender: spender?.value ?? 'unknown',
@@ -158,7 +159,7 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
       }),
     );
     if (deadline) {
-      checkDeadline(results, node, deadline.name, deadline.value, nowMs);
+      checkDeadline(results, node, deadline.name ?? 'deadline', deadline.value, nowMs);
     }
   }
 
@@ -170,7 +171,7 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   if (
     node.target?.toLowerCase() === PERMIT2_ADDRESS.toLowerCase() &&
     selector !== null &&
-    PERMIT2_PERMIT_SELECTORS.has(selector)
+    PERMIT2_PERMIT_SELECTORS.has(selector) && (!node.verifiedAbi || node.permit2 !== null)
   ) {
     const profile = PERMIT2_FIELD_PROFILES[selector];
     const signatureVariant =
@@ -189,9 +190,9 @@ function applyNodeRules(node: CallNode, options: RiskOptions): void {
   }
 
   // transferFrom。
-  if (selector === ERC20_TRANSFER_FROM_SELECTOR) {
-    const from = paramByName(node, 'from');
-    const to = paramByName(node, 'to');
+  if (selector === ERC20_TRANSFER_FROM_SELECTOR && matchesKnownName('transferFrom')) {
+    const from = node.verifiedAbi ? node.params[0] : paramByName(node, 'from');
+    const to = node.verifiedAbi ? node.params[1] : paramByName(node, 'to');
     results.push(
       finding('transfer-from', 'medium', node, {
         from: from?.value ?? 'unknown',

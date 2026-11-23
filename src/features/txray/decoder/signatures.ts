@@ -6,6 +6,10 @@ export type Danger = 'high' | 'medium' | 'none';
 export type KnownExplainKey =
   | 'approve'
   | 'approveZeroAmbiguous'
+  | 'erc20Approval'
+  | 'erc20ApprovalRevoked'
+  | 'nftTokenApproval'
+  | 'nftTokenApprovalRevoked'
   | 'approvalForAll'
   | 'approvalForAllRevoked'
   | 'permit'

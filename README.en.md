@@ -55,6 +55,7 @@ TxRay focuses on **detect + explain**:
 ### TxRay · Transaction Decoder
 
 - Decode calldata directly.
+- Decode the root call with the Etherscan-verified ABI for the target on the selected chain when available. The address comes from the transaction hash or can be supplied with raw calldata. The decoder shows its evidence and uses matching ABI interface shapes to distinguish ERC-20 allowances from ERC-721 token IDs.
 - Fetch transaction input and receipts on the selected Ethereum, Base, Arbitrum, or Optimism network. Show the outer transaction status and recognizable ERC-20, ERC-721, and collection approval receipt events, including for empty calldata.
 - Recognize common selectors such as `approve`, `setApprovalForAll`, `permit`, `transferFrom`, and `transfer`.
 - Recursively expand Multicall3, `multicall(bytes[])`, Safe `execTransaction`, smart-account `execute/executeBatch`, and ERC-4337 `handleOps`, attaching findings to concrete call paths.

@@ -1,3 +1,5 @@
+import type { ApprovalInterface, VerifiedCall } from '../verifiedAbi';
+
 // 有界递归交易调用树：纯 TypeScript 模型与类型。
 //
 // 不依赖 React / DOM / 网络；同一输入产生稳定输出；解码失败不抛异常而是落到
@@ -162,6 +164,8 @@ export interface CallNode {
   /** 已识别签名（本地表或调用方注入的签名表）。 */
   signature: string | null;
   functionName: string | null;
+  verifiedAbi?: boolean;
+  approvalInterface?: ApprovalInterface;
   params: CallNodeParam[];
   children: CallNode[];
   riskFindings: RiskFinding[];
@@ -226,6 +230,7 @@ export interface CallTreeOptions {
    * 解析核心本身不做任何网络请求。
    */
   signatures?: Record<string, string>;
+  verifiedRoot?: VerifiedCall;
   /**
    * 截止时间类检查的参考时刻（毫秒）。默认取当前时间；
    * 需要确定性输出时请显式传入。

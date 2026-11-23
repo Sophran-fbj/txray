@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { padHex, toEventSelector } from 'viem';
+import { padHex, parseAbi, toEventSelector } from 'viem';
 import { mainnet } from 'viem/chains';
 import { APPROVE_EXAMPLE } from '../src/features/txray/decoder/examples';
 
@@ -19,6 +19,7 @@ function receipt(status: '0x0' | '0x1', logs: unknown[] = []) {
 }
 
 async function mockRpc(page: Page, transaction: Record<string, unknown>, readReceipt: () => object) {
+  await page.route('**/api/contract-abi?**', (route) => route.fulfill({ json: { status: 'unverified' } }));
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -90,4 +91,17 @@ test('shows the emitting contract and raw amount for a recorded approval', async
   await expect(event.getByText('ERC-20 格式')).toBeVisible();
   await expect(event.getByText('100', { exact: true })).toBeVisible();
   await expect(event.getByRole('link', { name: target })).toHaveAttribute('href', `https://etherscan.io/address/${target}`);
+});
+
+test('uses the target from a transaction hash for verified ABI decoding', async ({ page }) => {
+  await mockRpc(page, {}, () => ({ result: receipt('0x1') }));
+  await page.route('**/api/contract-abi?**', async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get('chainId')).toBe('1');
+    expect(params.get('address')).toBe(target);
+    await route.fulfill({ json: { status: 'verified', functions: parseAbi(['function approve(address party, uint256 quantity)']) } });
+  });
+  await openTransaction(page);
+  await expect(page.getByText(/目标合约已验证 ABI/)).toBeVisible();
+  await expect(page.locator('tbody tr').filter({ hasText: 'quantity' })).toHaveCount(1);
 });

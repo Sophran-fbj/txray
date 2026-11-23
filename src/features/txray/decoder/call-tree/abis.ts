@@ -134,11 +134,11 @@ export const PERMIT2_FIELD_PROFILES: Record<string, Permit2FieldProfile> = {
   [toFunctionSelector(PERMIT2_PERMIT_ABIS[3])]: 'signature-batch',
 };
 
-export const PERMIT2_PERMIT_ABI_BY_PROFILE: Record<Permit2FieldProfile, Abi> = {
-  'allowance-single': PERMIT2_PERMIT_ABIS[0] as unknown as Abi,
-  'allowance-batch': PERMIT2_PERMIT_ABIS[1] as unknown as Abi,
-  'signature-single': PERMIT2_PERMIT_ABIS[2] as unknown as Abi,
-  'signature-batch': PERMIT2_PERMIT_ABIS[3] as unknown as Abi,
+export const PERMIT2_PERMIT_ABI_BY_PROFILE: Record<Permit2FieldProfile, AbiFunction> = {
+  'allowance-single': PERMIT2_PERMIT_ABIS[0],
+  'allowance-batch': PERMIT2_PERMIT_ABIS[1],
+  'signature-single': PERMIT2_PERMIT_ABIS[2],
+  'signature-batch': PERMIT2_PERMIT_ABIS[3],
 };
 
 // 选择器在模块加载时从官方 ABI 计算，避免手抄 4 字节出错。

@@ -55,6 +55,7 @@ TxRay 的核心是 **检测 + 解释**：
 ### TxRay · 交易解码
 
 - 直接解码 calldata。
+- 有目标地址时，优先按所选链上该地址的 Etherscan 已验证 ABI 解码根调用。交易哈希自动提供目标地址，粘贴 calldata 时可手动填写。页面显示解码依据，并根据匹配的 ABI 接口形状区分 ERC-20 额度和 ERC-721 token ID。
 - 在选定的 Ethereum、Base、Arbitrum 或 Optimism 网络通过交易哈希读取交易输入和回执。页面展示外层交易状态以及回执中可识别的 ERC-20、ERC-721 转账与授权和 NFT 集合授权事件，空 calldata 的交易也可查看回执。
 - 识别 `approve`、`setApprovalForAll`、`permit`、`transferFrom`、`transfer` 等常见选择器。
 - 递归展开 Multicall3、`multicall(bytes[])`、Safe `execTransaction`、智能账户 `execute/executeBatch` 和 ERC-4337 `handleOps`，并把风险定位到具体调用路径。
@@ -125,7 +126,8 @@ src/
 | 授权历史 | 服务端路由 -> Etherscan 索引器 | 免费 RPC 全历史 `eth_getLogs` 不现实。 |
 | 当前额度 / 元数据 | 浏览器 -> viem multicall | 读取实时链上状态，不需要自有服务端状态。 |
 | spender 创建信息 | 服务端路由 -> Etherscan | API key 留在服务端。 |
-| calldata 解码 | 浏览器 + 签名查询路由 | 本地选择器表优先，未知再查 OpenChain。 |
+| calldata 解码 | 浏览器 + 签名查询路由 | 按目标 ABI 解码。回退到选择器时先查本地表，未知再查 OpenChain。 |
+| 目标合约 ABI | 服务端路由 → Etherscan | 仅传送所选链和目标合约地址。查询或匹配失败时回退到本地选择器表和 OpenChain。 |
 | EIP-712 分析 | 浏览器本地 | 纯 JSON 检查，不需要 RPC，也不需要签名。 |
 | Token 价格 | 浏览器 -> 服务端批量缓存 -> CoinGecko | 仅用于 `$ at risk` 估算；失败或缺价时明确显示覆盖范围，并回退到 token 数量。 |
 
@@ -201,3 +203,4 @@ pnpm e2e
 
 
 
+- ABI 查询以目标地址为准。代理把调用转发到实现合约时，若代理自身的 ABI 无法匹配该函数，页面会回退到选择器匹配。

@@ -1,6 +1,8 @@
 import {
   decodeFunctionData,
   parseAbiItem,
+  toFunctionSelector,
+  toFunctionSignature,
   type Abi,
   type AbiFunction,
 } from 'viem';
@@ -53,6 +55,7 @@ import type {
 interface TreeState {
   limits: DecodeLimits;
   signatures: Record<string, string>;
+  verifiedRoot?: CallTreeOptions['verifiedRoot'];
   nodeCount: number;
   truncated: boolean;
 }
@@ -218,9 +221,21 @@ function decodeCall(
     return node;
   }
 
+  const verified = depth === 0 && state.verifiedRoot && toFunctionSelector(state.verifiedRoot.abi) === selector
+    ? state.verifiedRoot : undefined;
+  const verifiedSignature = verified && toFunctionSignature(verified.abi);
+  const matchesVerified = (abi: Abi) => !verifiedSignature ||
+    toFunctionSignature(abi[0] as AbiFunction) === verifiedSignature;
+  if (verified) {
+    node.verifiedAbi = true;
+    node.approvalInterface = verified.approvalInterface;
+  }
+
   // 1) 已知容器：selector 匹配 + 官方 ABI 形状解码成功才认定。
   for (const definition of findContainerDefinitions(selector)) {
-    const decoded = tryDecodeWithAbi(definition.abi as unknown as Abi, normalized);
+    const abi = definition.abi as unknown as Abi;
+    if (!matchesVerified(abi)) continue;
+    const decoded = tryDecodeWithAbi(abi, normalized);
     if (decoded) {
       expandContainer(node, definition, decoded, meta, depth, path, state);
       return node;
@@ -229,13 +244,9 @@ function decodeCall(
 
   // 2) Permit2 permit：官方 ABI 本地解码（不依赖签名库），并提取嵌套字段。
   const permit2Profile = PERMIT2_FIELD_PROFILES[selector];
-  if (permit2Profile) {
-    const decoded = tryDecodeWithAbi(
-      [
-        PERMIT2_PERMIT_ABI_BY_PROFILE[permit2Profile],
-      ] as unknown as Abi,
-      normalized,
-    );
+  const permit2Abi = permit2Profile ? [PERMIT2_PERMIT_ABI_BY_PROFILE[permit2Profile]] : undefined;
+  if (permit2Abi && matchesVerified(permit2Abi)) {
+    const decoded = tryDecodeWithAbi(permit2Abi, normalized);
     if (decoded) {
       node.functionName = decoded.functionName;
       node.signature = decoded.signature;
@@ -245,6 +256,17 @@ function decodeCall(
       return node;
     }
     // 形状对不上时继续走签名表路径（可能 signature-only）。
+  }
+
+  if (verified) {
+    const decoded = tryDecodeWithAbi([verified.abi], normalized);
+    node.signature = verifiedSignature ?? null;
+    node.decodeStatus = decoded ? 'decoded' : 'signature-only';
+    if (decoded) {
+      node.functionName = decoded.functionName;
+      node.params = formatParams(decoded.inputs, decoded.args, state.limits);
+    }
+    return node;
   }
 
   // 3) 普通调用：本地已知签名表 / 注入签名表（可能有歧义，逐个尝试）。
@@ -950,6 +972,7 @@ export function buildCallTree(
   const state: TreeState = {
     limits,
     signatures: options.signatures ?? {},
+    verifiedRoot: options.verifiedRoot,
     nodeCount: 0,
     truncated: false,
   };

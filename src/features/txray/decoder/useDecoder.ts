@@ -1,10 +1,13 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePublicClient } from 'wagmi';
 import {
   decodeFunctionData,
   parseAbiItem,
+  toFunctionSignature,
+  zeroAddress,
+  type AbiFunction,
   type Address,
   type Hash,
   type Hex,
@@ -18,6 +21,7 @@ import {
 } from './signatures';
 import { isRecord } from '@/lib/validation';
 import { classifyApprovalAmount, type ApprovalAmountScope } from '@/lib/web3/approvalAmount';
+import { fetchVerifiedAbi, getApprovalInterface, selectVerifiedFunction, type VerifiedAbiResult, type VerifiedCall } from './verifiedAbi';
 export { isMaxUintValue } from '@/lib/web3/approvalAmount';
 
 export interface DecodedParam {
@@ -26,10 +30,15 @@ export interface DecodedParam {
   value: string;
   isAddress: boolean;
   approvalAmountScope?: ApprovalAmountScope;
+  ambiguousApprovalAmount?: boolean;
+  isTokenId?: boolean;
 }
 
 export interface DecodedResult {
   source: 'calldata' | 'tx';
+  signatureSource: 'verified' | 'local' | 'database' | 'unknown';
+  abiStatus?: 'matched' | 'no-match' | 'unverified' | 'unavailable';
+  verifiedCall?: VerifiedCall;
   to?: Address;
   selector: string;
   signature: string | null;
@@ -61,8 +70,9 @@ export function isCalldata(value: string): value is Hex {
   return /^0x[0-9a-fA-F]{8,}$/.test(value) && (value.length - 2) % 2 === 0;
 }
 
-export function useDecoder(input: string, chainId = 1, mode?: DecoderInputMode) {
+export function useDecoder(input: string, chainId = 1, mode?: DecoderInputMode, calldataTarget?: Address) {
   const client = usePublicClient({ chainId });
+  const queryClient = useQueryClient();
   const value = input.trim();
   const fromHash = mode === 'tx' || (mode === undefined && isTxHash(value));
   const hash = fromHash && isTxHash(value) ? value : undefined;
@@ -79,16 +89,21 @@ export function useDecoder(input: string, chainId = 1, mode?: DecoderInputMode) 
 
   const transaction = transactionQuery.data;
   const calldata = fromHash ? transaction?.input : value;
+  const target = fromHash ? transaction?.to ?? undefined : calldataTarget;
   const callQuery = useQuery<DecodedResult>({
-    queryKey: ['decode', chainId, fromHash ? hash?.toLowerCase() : null, calldata?.toLowerCase()],
+    queryKey: ['decode', chainId, fromHash ? hash?.toLowerCase() : null, calldata?.toLowerCase(), target?.toLowerCase()],
     enabled: calldata !== undefined && isCalldata(calldata) && (!fromHash || Boolean(transaction?.to)),
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {
       if (!calldata || !isCalldata(calldata)) throw new Error('不是有效的 calldata');
-      return transaction
-        ? decodeCalldata(calldata, fetchSignature, transaction)
-        : decodeInput(undefined, calldata, fetchSignature, 'calldata');
+      const contractAbi = target ? await queryClient.fetchQuery({
+        queryKey: ['decoder-verified-abi', chainId, target.toLowerCase()],
+        queryFn: ({ signal }) => fetchVerifiedAbi(chainId, target, signal),
+        staleTime: (query) => query.state.data?.status === 'unavailable' ? 30_000 : 300_000,
+        retry: false,
+      }) : undefined;
+      return decodeCalldata(calldata, fetchSignature, { transaction, target, contractAbi });
     },
   });
 
@@ -108,69 +123,70 @@ export async function decodeInput(
     if (!transaction.input || transaction.input === '0x') {
       throw new NoCalldataError();
     }
-    return decodeCalldata(transaction.input, lookupSignature, transaction);
+    return decodeCalldata(transaction.input, lookupSignature, { transaction, target: transaction.to ?? undefined });
   }
   return decodeCalldata(value, lookupSignature);
 }
 
-async function decodeCalldata(
+export async function decodeCalldata(
   calldata: string,
   lookupSignature: SignatureLookup,
-  transaction?: Pick<DecoderTransaction, 'to' | 'value'>,
+  context?: { transaction?: Pick<DecoderTransaction, 'value'>; target?: Address; contractAbi?: VerifiedAbiResult },
 ): Promise<DecodedResult> {
   if (!isCalldata(calldata)) {
     throw new Error('不是有效的 calldata（应为 0x + 至少 4 字节方法选择器）');
   }
 
   const selector = calldata.slice(0, 10).toLowerCase();
-  const known = KNOWN_SIGNATURES[selector];
-  const signature = known?.signature ?? (await lookupSignature(selector));
+  const local = KNOWN_SIGNATURES[selector];
+  const functions = context?.contractAbi?.status === 'verified' ? context.contractAbi.functions : undefined;
+  const candidate = functions && selectVerifiedFunction(functions, selector);
+  const verifiedParams = candidate && decodeParams(candidate, calldata);
+  const verifiedCall = candidate && verifiedParams && functions ? {
+    abi: candidate, approvalInterface: getApprovalInterface(candidate, functions),
+  } : undefined;
+  const signature = verifiedCall ? toFunctionSignature(verifiedCall.abi) : local?.signature ?? (await lookupSignature(selector));
+  const item = verifiedCall?.abi ?? parseFunctionSignature(signature);
+  const decodedParams = verifiedParams ?? (item && decodeParams(item, calldata));
+  const params = decodedParams ?? [];
+  const functionName = item && decodedParams ? item.name : null;
+  const signatureSource = verifiedCall ? 'verified' : local ? 'local' : signature ? 'database' : 'unknown';
+  const abiStatus = verifiedCall ? 'matched' : context?.contractAbi?.status === 'verified' ? 'no-match' : context?.contractAbi?.status;
+  const known = functionName && (!verifiedCall || !local || signature === toFunctionSignature(`function ${local.signature}`)) ? local : undefined;
 
-  let params: DecodedParam[] = [];
-  let functionName: string | null = null;
-  if (signature) {
-    try {
-      const item = parseAbiItem(`function ${signature}`);
-      if (item.type === 'function') {
-        const decoded = decodeFunctionData({ abi: [item], data: calldata });
-        functionName = item.name;
-        const args = decoded.args ?? [];
-        params = item.inputs.map((input, index) => ({
-          name: input.name,
-          type: input.type,
-          value: formatValue(args[index]),
-          isAddress: input.type === 'address',
-        }));
+  let danger: Danger = known?.danger ?? 'none';
+  let explainKey: KnownExplainKey | undefined = known?.explainKey;
+  if (known && selector === '0x095ea7b3') {
+    const amount = params[1];
+    const approvalInterface = verifiedCall?.approvalInterface;
+    if (approvalInterface === 'erc721' && amount) {
+      amount.isTokenId = true;
+      const revoked = params[0]?.value.toLowerCase() === zeroAddress;
+      danger = revoked ? 'none' : 'medium';
+      explainKey = revoked ? 'nftTokenApprovalRevoked' : 'nftTokenApproval';
+    } else if (amount) {
+      setApprovalAmountScope(amount, approvalInterface === undefined);
+      if (approvalInterface === 'erc20') explainKey = 'erc20Approval';
+      if (amount.value === '0') {
+        danger = approvalInterface === 'erc20' ? 'none' : 'medium';
+        explainKey = approvalInterface === 'erc20' ? 'erc20ApprovalRevoked' : 'approveZeroAmbiguous';
+      } else if (amount.approvalAmountScope === 'max') {
+        danger = 'high';
       }
-    } catch {
-      // A signature database match can be ambiguous; preserve the signature and raw data.
     }
   }
-
-  let danger: Danger = functionName ? known?.danger ?? 'none' : 'none';
-  let explainKey: KnownExplainKey | undefined = functionName ? known?.explainKey : undefined;
-  const approvalAmount = functionName && (selector === '0x095ea7b3' ? params[1] : selector === '0xd505accf' ? params[2] : undefined);
-  if (approvalAmount && /^\d+$/.test(approvalAmount.value)) {
-    approvalAmount.approvalAmountScope = classifyApprovalAmount(BigInt(approvalAmount.value), 256);
-  }
-  if (functionName && selector === '0x095ea7b3') {
-    // approve(address,uint256) is shared by ERC-20 and ERC-721. Without a
-    // verified target ABI, zero can mean ERC-20 revocation or NFT tokenId 0.
-    if (params[1]?.value === '0') {
-      danger = 'medium';
-      explainKey = 'approveZeroAmbiguous';
-    } else if (params[1]?.approvalAmountScope === 'max') {
-      danger = 'high';
-    }
-  }
-  if (functionName && selector === '0xa22cb465' && params[1]?.value === 'false') {
+  if (known && selector === '0xd505accf') setApprovalAmountScope(params[2], false);
+  if (known && selector === '0xa22cb465' && params[1]?.value === 'false') {
     danger = 'none';
     explainKey = 'approvalForAllRevoked';
   }
 
   return {
-    source: transaction ? 'tx' : 'calldata',
-    to: transaction?.to ?? undefined,
+    source: context?.transaction ? 'tx' : 'calldata',
+    to: context?.target,
+    signatureSource,
+    abiStatus,
+    verifiedCall,
     selector,
     signature,
     functionName,
@@ -178,8 +194,38 @@ async function decodeCalldata(
     danger,
     explainKey,
     raw: calldata,
-    txValue: transaction ? transaction.value ?? null : undefined,
+    txValue: context?.transaction?.value,
   };
+}
+
+function parseFunctionSignature(signature: string | null): AbiFunction | undefined {
+  if (!signature) return undefined;
+  try {
+    const item = parseAbiItem(`function ${signature}`);
+    if (item.type === 'function') return item;
+  } catch {
+    // Unknown or ambiguous signature database entries still leave the raw calldata available.
+  }
+}
+
+function decodeParams(item: AbiFunction, data: Hex): DecodedParam[] | undefined {
+  try {
+    const decoded = decodeFunctionData({ abi: [item], data });
+    return item.inputs.map((input, index) => ({
+      name: input.name,
+      type: input.type,
+      value: formatValue(decoded.args?.[index]),
+      isAddress: input.type === 'address',
+    }));
+  } catch {
+    return undefined;
+  }
+}
+
+function setApprovalAmountScope(param: DecodedParam | undefined, ambiguous: boolean) {
+  if (!param || !/^\d+$/.test(param.value)) return;
+  param.approvalAmountScope = classifyApprovalAmount(BigInt(param.value), 256);
+  param.ambiguousApprovalAmount = ambiguous;
 }
 
 async function fetchSignature(selector: string): Promise<string | null> {

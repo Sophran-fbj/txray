@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET as getApprovals } from './approvals/route';
 import { GET as decodeSignature } from './decode-sig/route';
+import { GET as getContractAbi } from './contract-abi/route';
 import { GET as getSpenderInfo } from './spender-info/route';
 import { GET as getTokenPrices } from './token-prices/route';
 
@@ -29,6 +30,47 @@ function request(path: string, ip: string): NextRequest {
 }
 
 describe('API input boundaries', () => {
+  it('validates the contract address and chain before calling the ABI provider', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const address = '0x0000000000000000000000000000000000000001';
+    expect((await getContractAbi(request('/api/contract-abi?chainId=1&address=invalid', 'abi-invalid'))).status).toBe(400);
+    expect((await getContractAbi(request(`/api/contract-abi?chainId=999&address=${address}`, 'abi-chain'))).status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reads the verified ABI for the exact target chain and address', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-key';
+    const address = '0x0000000000000000000000000000000000000001';
+    const abi = [{ type: 'function', name: 'check', inputs: [{ type: 'address', name: 'account' }], outputs: [], stateMutability: 'view' }];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      expect(url.hostname).toBe('api.etherscan.io');
+      expect(url.searchParams.get('chainid')).toBe('8453');
+      expect(url.searchParams.get('address')).toBe(address);
+      expect(url.searchParams.get('action')).toBe('getabi');
+      return Response.json({ status: '1', result: JSON.stringify(abi) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await getContractAbi(request(`/api/contract-abi?chainId=8453&address=${address}`, 'abi-verified'));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: 'verified', functions: abi });
+  });
+
+  it('distinguishes unverified contracts from upstream errors', async () => {
+    process.env.ETHERSCAN_API_KEY = 'test-key';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ status: '0', result: 'Contract source code not verified' }))
+      .mockResolvedValueOnce(Response.json({ status: '0', result: 'Rate limit reached' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const endpoint = '/api/contract-abi?chainId=1&address=0x0000000000000000000000000000000000000001';
+    const unverified = await getContractAbi(request(endpoint, 'abi-unverified'));
+    const unavailable = await getContractAbi(request(endpoint, 'abi-outage'));
+    await expect(unverified.json()).resolves.toEqual({ status: 'unverified' });
+    expect(unavailable.status).toBe(502);
+    await expect(unavailable.json()).resolves.toEqual({ status: 'unavailable' });
+  });
+
   it('rejects malformed selectors before calling OpenChain', async () => {
     const response = await decodeSignature(
       request('/api/decode-sig?selector=0x1234', 'test-decode'),

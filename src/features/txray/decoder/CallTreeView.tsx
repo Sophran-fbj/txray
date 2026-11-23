@@ -19,6 +19,7 @@ import type {
 import { getSpenderLabel } from '@/features/txray/approvals/spenderLabels';
 import { explorerAddressUrl } from '@/features/txray/chains/chains';
 import { useI18n } from '@/lib/i18n/provider';
+import type { VerifiedCall } from './verifiedAbi';
 
 // 调用树展示：可折叠层级 + 问题路径默认展开（高风险 / 未知或不完整 /
 // 递归停止）+ 键盘可达 + 双语。
@@ -30,6 +31,7 @@ interface CallTreeViewProps {
   data: string;
   selector: string;
   signature: string | null;
+  verifiedCall?: VerifiedCall;
 }
 
 export function useCallTree(props: CallTreeViewProps): CallTreeResult {
@@ -42,10 +44,11 @@ export function useCallTree(props: CallTreeViewProps): CallTreeResult {
           data: props.data,
         },
         {
-          signatures: props.signature ? { [props.selector]: props.signature } : {},
+          signatures: props.signature && !props.verifiedCall ? { [props.selector]: props.signature } : {},
+          verifiedRoot: props.verifiedCall,
         },
       ),
-    [props.to, props.value, props.data, props.selector, props.signature],
+    [props.to, props.value, props.data, props.selector, props.signature, props.verifiedCall],
   );
 }
 

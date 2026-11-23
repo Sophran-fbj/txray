@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { encodeFunctionData, parseAbiItem, type PublicClient } from 'viem';
-import { decodeInput, isMaxUintValue } from './useDecoder';
+import { encodeFunctionData, parseAbi, parseAbiItem, type PublicClient } from 'viem';
+import { buildCallTree } from './call-tree/decode';
+import { decodeCalldata, decodeInput, isMaxUintValue } from './useDecoder';
+import { parseVerifiedFunctions } from './verifiedAbi';
 
 const APPROVE_MAX =
   '0x095ea7b3000000000000000000000000e592427a0aece92de3edee1f18e0157c05861564ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
@@ -111,5 +113,64 @@ describe('isMaxUintValue', () => {
     expect(isMaxUintValue('uint160', (2n ** 160n - 1n).toString())).toBe(true);
     expect(isMaxUintValue('uint256', (2n ** 256n - 1n).toString())).toBe(true);
     expect(isMaxUintValue('uint160', (2n ** 256n - 1n).toString())).toBe(false);
+  });
+});
+
+describe('verified target ABI', () => {
+  const target = '0x0000000000000000000000000000000000000001';
+  const spender = '0xE592427A0AEce92De3Edee1F18E0157C05861564';
+  const erc721 = parseAbi([
+    'function approve(address approved, uint256 nftId)',
+    'function ownerOf(uint256) view returns (address)',
+    'function getApproved(uint256) view returns (address)',
+    'function isApprovedForAll(address,address) view returns (bool)',
+    'function supportsInterface(bytes4) view returns (bool)',
+  ]);
+  const erc20 = parseAbi([
+    'function approve(address spender, uint256 allowanceValue) returns (bool)',
+    'function allowance(address,address) view returns (uint256)',
+    'function balanceOf(address) view returns (uint256)',
+    'function transfer(address,uint256) returns (bool)',
+    'function transferFrom(address,address,uint256) returns (bool)',
+  ]);
+
+  it('uses actual ABI parameter names and distinguishes NFT token zero from clearing a fungible allowance', async () => {
+    const calldata = encodeFunctionData({ abi: erc721, functionName: 'approve', args: [spender, 0n] });
+    const lookup = vi.fn();
+    const nft = await decodeCalldata(calldata, lookup, { target, contractAbi: { status: 'verified', functions: [...erc721] } });
+    expect(nft).toMatchObject({ signatureSource: 'verified', abiStatus: 'matched', explainKey: 'nftTokenApproval' });
+    expect(nft.params[1]).toMatchObject({ name: 'nftId', value: '0', isTokenId: true });
+
+    const token = await decodeCalldata(calldata, lookup, { target, contractAbi: { status: 'verified', functions: [...erc20] } });
+    expect(token).toMatchObject({ signatureSource: 'verified', abiStatus: 'matched', explainKey: 'erc20ApprovalRevoked' });
+    expect(token.params[1]).toMatchObject({ name: 'allowanceValue', value: '0' });
+    const maximum = await decodeCalldata(APPROVE_MAX, lookup, { target, contractAbi: { status: 'verified', functions: [...erc20] } });
+    expect(maximum).toMatchObject({ explainKey: 'erc20Approval', danger: 'high' });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('uses the verified root ABI in the call tree without assigning ERC-20 allowance findings to an NFT id', async () => {
+    const decoded = await decodeCalldata(APPROVE_MAX, vi.fn(), { target, contractAbi: { status: 'verified', functions: [...erc721] } });
+    const tree = buildCallTree({ to: target, data: APPROVE_MAX }, { verifiedRoot: decoded.verifiedCall });
+    expect(tree.root.params[1]).toMatchObject({ name: 'nftId' });
+    expect(tree.root.riskFindings.map((finding) => finding.code)).not.toContain('erc20-max-allowance');
+  });
+
+  it('retains selector-based ambiguity if the target ABI did not match', async () => {
+    const calldata = encodeFunctionData({ abi: erc721, functionName: 'approve', args: [spender, 0n] });
+    const mismatchedAbi = parseAbi(['function other(uint256 value)']);
+    const decoded = await decodeCalldata(calldata, vi.fn(), { target, contractAbi: { status: 'verified', functions: [...mismatchedAbi] } });
+    expect(decoded).toMatchObject({ signatureSource: 'local', abiStatus: 'no-match', explainKey: 'approveZeroAmbiguous' });
+  });
+
+  it('preserves tuple components from the verified ABI', async () => {
+    const abi = parseAbi(['function configure((address recipient, uint256 weight)[] options)']);
+    const calldata = encodeFunctionData({ abi, functionName: 'configure', args: [[{ recipient: spender, weight: 7n }]] });
+    const functions = parseVerifiedFunctions(JSON.parse(JSON.stringify(abi)));
+    expect(functions).toBeDefined();
+    const decoded = await decodeCalldata(calldata, vi.fn(), { target, contractAbi: { status: 'verified', functions: functions ?? [] } });
+    expect(decoded).toMatchObject({ signatureSource: 'verified', functionName: 'configure' });
+    expect(decoded.params[0]).toMatchObject({ name: 'options', type: 'tuple[]' });
+    expect(decoded.params[0].value).toContain('"weight":"7"');
   });
 });

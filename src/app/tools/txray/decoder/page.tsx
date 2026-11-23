@@ -33,9 +33,12 @@ export default function DecoderPage() {
   const [mode, setMode] = useState<DecoderInputMode>('tx');
   const [txInput, setTxInput] = useState('');
   const [calldataInput, setCalldataInput] = useState('');
+  const [calldataTarget, setCalldataTarget] = useState('');
   const [chainId, setChainId] = useState(DEFAULT_TXRAY_CHAIN_ID);
   const input = mode === 'tx' ? txInput : calldataInput;
-  const { callQuery, transactionQuery } = useDecoder(input, chainId, mode);
+  const targetValue = calldataTarget.trim();
+  const targetAddress = isAddress(targetValue) ? getAddress(targetValue) : undefined;
+  const { callQuery, transactionQuery } = useDecoder(input, chainId, mode, targetAddress);
   const transaction = transactionQuery.data;
   const data = callQuery.data;
   const value = input.trim();
@@ -134,18 +137,33 @@ export default function DecoderPage() {
             <button
               type="button"
               className="link link-primary text-xs"
-              onClick={() => { setMode('calldata'); setCalldataInput(APPROVE_EXAMPLE); }}
+              onClick={() => { setMode('calldata'); setCalldataInput(APPROVE_EXAMPLE); setCalldataTarget(''); }}
             >
               {t.decoder.approveSample}
             </button>
             <button
               type="button"
               className="link link-secondary text-xs"
-              onClick={() => { setMode('calldata'); setCalldataInput(NESTED_MULTICALL_EXAMPLE); }}
+              onClick={() => { setMode('calldata'); setCalldataInput(NESTED_MULTICALL_EXAMPLE); setCalldataTarget(''); }}
             >
               {t.decoder.callTreeSample}
             </button>
           </div>
+          {mode === 'calldata' && (
+            <div className="form-control mt-4">
+              <label className="label" htmlFor="decoder-target">
+                <span className="label-text">{t.decoder.calldataTarget}</span>
+              </label>
+              <input id="decoder-target" className="input input-bordered w-full font-mono" placeholder="0x…"
+                value={calldataTarget} spellCheck={false} autoComplete="off"
+                onChange={(event) => setCalldataTarget(event.target.value)}
+                aria-invalid={Boolean(targetValue && !targetAddress)} aria-describedby="decoder-target-help" />
+              <p className="mt-1 text-xs text-base-content/70" id="decoder-target-help">{t.decoder.calldataTargetHelp}</p>
+              {targetValue && !targetAddress && (
+                <p className="mt-1 text-xs text-error" role="alert">{t.decoder.invalidTarget}</p>
+              )}
+            </div>
+          )}
         </div>
 
         {showResult && (
@@ -179,7 +197,7 @@ export default function DecoderPage() {
             {data && (
               <>
                 <p className="mb-4 text-sm text-base-content/70" role="status">
-                  {data.source === 'tx' ? t.decoder.txResultNote : t.decoder.calldataResultNote}
+                  {data.source === 'tx' ? t.decoder.txResultNote : data.to ? t.decoder.calldataTargetNote : t.decoder.calldataResultNote}
                 </p>
                 <DecodedView data={data} chainId={chainId} />
               </>
@@ -203,6 +221,7 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
     data: data.raw,
     selector: data.selector,
     signature: data.signature,
+    verifiedCall: data.verifiedCall,
   });
   const dangerStyle =
     data.danger === 'high'
@@ -247,7 +266,19 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
                 {data.signature}
               </div>
             )}
+            <p className="mt-1 text-xs text-base-content/70">
+              {t.decoder.signatureSources[data.signatureSource]}
+              {data.abiStatus && data.abiStatus !== 'matched' && ` · ${t.decoder.abiFallback[data.abiStatus]}`}
+              {data.verifiedCall?.approvalInterface && ` · ${t.decoder.approvalInterfaces[data.verifiedCall.approvalInterface]}`}
+            </p>
           </div>
+
+          {data.source === 'calldata' && data.to && (
+            <div>
+              <div className="text-xs text-base-content/70">{t.decoder.targetContract}</div>
+              <AddressLink address={data.to} chainId={chainId} />
+            </div>
+          )}
 
           {data.params.length > 0 && (
             <table className="table table-sm block sm:table">
@@ -276,7 +307,7 @@ function DecodedView({ data, chainId }: { data: DecodedResult; chainId: number }
       {/* 树身份 = 链 + 目标 + calldata：切换缓存结果时强制重建组件，
           让默认展开状态（高风险 / 未知路径）对新树重新计算 */}
       <CallTreeView
-        key={`${chainId}:${data.to ?? ''}:${data.raw}`}
+        key={`${chainId}:${data.to ?? ''}:${data.raw}:${data.signatureSource}`}
         tree={tree}
         chainId={chainId}
       />
@@ -309,7 +340,7 @@ function ParamRow({
     param.isAddress && isAddress(param.value)
       ? getSpenderLabel(getAddress(param.value), chainId)
       : undefined;
-  const isMaxUint = isMaxUintValue(param.type, param.value);
+  const isMaxUint = !param.isTokenId && isMaxUintValue(param.type, param.value);
   const scope = param.approvalAmountScope;
   const amountLabel = scope === 'max' || scope === 'large' ? t.approvalScope[scope] : undefined;
 
@@ -339,7 +370,7 @@ function ParamRow({
         ) : amountLabel ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className={`badge badge-sm ${scope === 'max' ? 'badge-error' : 'badge-warning'}`}>
-              {param.name === 'amountOrTokenId' ? t.decoder.ifErc20(amountLabel) : amountLabel}
+              {param.ambiguousApprovalAmount ? t.decoder.ifErc20(amountLabel) : amountLabel}
             </span>
             <span className="break-all font-mono text-xs">{param.value}</span>
           </div>
@@ -348,7 +379,9 @@ function ParamRow({
             {t.decoder.maxUintValue(param.type)}
           </span>
         ) : (
-          <span className="break-all font-mono text-xs">{param.value}</span>
+          <span className="break-all font-mono text-xs">
+            {param.isTokenId && <span className="mr-2 text-base-content/70">Token ID</span>}{param.value}
+          </span>
         )}
       </td>
     </tr>
