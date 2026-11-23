@@ -108,9 +108,12 @@ export function analyzeTypedData(input: string): SignatureAnalysis {
   const leaves = types && primaryType
     ? collectTypedLeaves(types, primaryType, message)
     : collectFallbackLeaves(message);
+  const signedMessage = types && primaryType
+    ? extractSchemaRecord(types, primaryType, message)
+    : message;
   const findings = leaves.flatMap(findingFromLeaf);
 
-  const permitKind = classifyPermit(primaryType, message, domain);
+  const permitKind = classifyPermit(primaryType, signedMessage, domain);
   const hasUnlimited = findings.some(
     (finding) => finding.kind === 'amount' && finding.severity === 'high',
   );
@@ -167,7 +170,7 @@ export function analyzeTypedData(input: string): SignatureAnalysis {
     permit2Mode: permitKind === 'permit2-allowance'
       ? 'allowance'
       : permitKind === 'permit2-transfer' ? 'transfer' : undefined,
-    orderSummary: permitKind === 'nft-order' ? buildOrderSummary(message) : undefined,
+    orderSummary: permitKind === 'nft-order' ? buildOrderSummary(signedMessage) : undefined,
     title,
     explain,
     findings,
@@ -326,6 +329,39 @@ function collectTypedLeaves(
   return leaves;
 }
 
+function extractSchemaRecord(
+  types: Record<string, TypedDataField[]>,
+  primaryType: string,
+  message: Record<string, unknown>,
+): Record<string, unknown> {
+  const projected = extractSchemaValue(types, primaryType, message, 0);
+  return isRecord(projected) ? projected : {};
+}
+
+function extractSchemaValue(
+  types: Record<string, TypedDataField[]>,
+  type: string,
+  value: unknown,
+  depth: number,
+): unknown {
+  if (depth > MAX_SCHEMA_DEPTH) return undefined;
+  const arrayMatch = /^(.*)\[(\d*)\]$/.exec(type);
+  if (arrayMatch) {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => extractSchemaValue(types, arrayMatch[1], item, depth + 1));
+  }
+  const struct = types[type];
+  if (struct) {
+    if (!isRecord(value)) return {};
+    const output: Record<string, unknown> = {};
+    for (const field of struct) {
+      output[field.name] = extractSchemaValue(types, field.type, value[field.name], depth + 1);
+    }
+    return output;
+  }
+  return value;
+}
+
 function validateTypedValue(type: string, value: unknown, path: string): void {
   if (type === 'address') {
     if (typeof value !== 'string' || !isAddress(value)) throw new Error(`${path} must be an address.`);
@@ -461,7 +497,8 @@ function buildOrderSummary(message: Record<string, unknown>): OrderSummary {
     give,
     receiveByOfferer,
     receiveByOthers,
-    zeroReturnToOfferer: Boolean(offerer) && give.length > 0 && !hasPositiveReturn,
+    zeroReturnToOfferer:
+      give.length > 0 && (consideration.length === 0 || (Boolean(offerer) && !hasPositiveReturn)),
   };
 }
 
@@ -539,8 +576,19 @@ function classifyPermit(
     isUnsignedValue(message.value) && isUnsignedValue(message.deadline)) {
     return 'erc20-permit';
   }
+  const isOrderAssetLike = (item: unknown): boolean =>
+    isRecord(item) && (
+      asAddress(item.token) !== undefined ||
+      item.itemType !== undefined ||
+      item.startAmount !== undefined ||
+      item.endAmount !== undefined ||
+      item.identifierOrCriteria !== undefined
+    );
+
   if (Array.isArray(message.offer) && message.offer.length > 0 &&
-    Array.isArray(message.consideration) && message.consideration.length > 0 &&
+    message.offer.every(isOrderAssetLike) &&
+    Array.isArray(message.consideration) &&
+    message.consideration.every(isRecord) &&
     (!type || /order/.test(type))) {
     return 'nft-order';
   }

@@ -392,6 +392,144 @@ describe('analyzeTypedData', () => {
     expect(result.orderSummary?.receiveByOthers).toHaveLength(1);
   });
 
+  it('classifies empty-consideration orders as high-risk nft-order and flags zeroReturnToOfferer', () => {
+    const offerer = '0x1111111111111111111111111111111111111111';
+    const nft = '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D';
+    const fullOrder = analyzeTypedData(JSON.stringify({
+      types: {
+        EIP712Domain: [{ name: 'name', type: 'string' }],
+        OrderComponents: [
+          { name: 'offerer', type: 'address' },
+          { name: 'offer', type: 'OfferItem[]' },
+          { name: 'consideration', type: 'ConsiderationItem[]' },
+        ],
+        OfferItem: [
+          { name: 'itemType', type: 'uint8' },
+          { name: 'token', type: 'address' },
+          { name: 'identifierOrCriteria', type: 'uint256' },
+          { name: 'startAmount', type: 'uint256' },
+          { name: 'endAmount', type: 'uint256' },
+        ],
+        ConsiderationItem: [
+          { name: 'itemType', type: 'uint8' },
+          { name: 'token', type: 'address' },
+          { name: 'identifierOrCriteria', type: 'uint256' },
+          { name: 'startAmount', type: 'uint256' },
+          { name: 'endAmount', type: 'uint256' },
+          { name: 'recipient', type: 'address' },
+        ],
+      },
+      domain: { name: 'Seaport' },
+      primaryType: 'OrderComponents',
+      message: {
+        offerer,
+        offer: [
+          {
+            itemType: 2,
+            token: nft,
+            identifierOrCriteria: '4242',
+            startAmount: '1',
+            endAmount: '1',
+          },
+        ],
+        consideration: [],
+      },
+    }));
+
+    expect(fullOrder.schemaValidated).toBe(true);
+    expect(fullOrder.riskKind).toBe('nft-order');
+    expect(fullOrder.danger).toBe('high');
+    expect(fullOrder.orderSummary?.zeroReturnToOfferer).toBe(true);
+    expect(fullOrder.orderSummary?.give).toHaveLength(1);
+    expect(fullOrder.orderSummary?.receiveByOfferer).toHaveLength(0);
+    expect(fullOrder.orderSummary?.receiveByOthers).toHaveLength(0);
+
+    const partialWithoutOfferer = analyzeTypedData(JSON.stringify({
+      domain: { name: 'Seaport' },
+      primaryType: 'Order',
+      message: {
+        offer: [
+          {
+            itemType: 2,
+            token: nft,
+            identifierOrCriteria: '7',
+            startAmount: '1',
+            endAmount: '1',
+          },
+        ],
+        consideration: [],
+      },
+    }));
+
+    expect(partialWithoutOfferer.riskKind).toBe('nft-order');
+    expect(partialWithoutOfferer.danger).toBe('high');
+    expect(partialWithoutOfferer.orderSummary?.zeroReturnToOfferer).toBe(true);
+  });
+
+  it('ignores unsigned extra fields outside EIP-712 types when classifying and summarizing orders', () => {
+    const offerer = '0x1111111111111111111111111111111111111111';
+    const nft = '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D';
+
+    // 1.ConsiderationItem only signs itemType/token; injected startAmount/recipient in message are not signed.
+    const decoyConsideration = analyzeTypedData(JSON.stringify({
+      types: {
+        EIP712Domain: [{ name: 'name', type: 'string' }],
+        OrderComponents: [
+          { name: 'offerer', type: 'address' },
+          { name: 'offer', type: 'OfferItem[]' },
+          { name: 'consideration', type: 'ConsiderationItem[]' },
+        ],
+        OfferItem: [
+          { name: 'itemType', type: 'uint8' },
+          { name: 'token', type: 'address' },
+          { name: 'startAmount', type: 'uint256' },
+        ],
+        ConsiderationItem: [
+          { name: 'itemType', type: 'uint8' },
+          { name: 'token', type: 'address' },
+        ],
+      },
+      domain: { name: 'Seaport' },
+      primaryType: 'OrderComponents',
+      message: {
+        offerer,
+        offer: [{ itemType: 2, token: nft, startAmount: '1' }],
+        consideration: [
+          {
+            itemType: 0,
+            token: '0x0000000000000000000000000000000000000000',
+            startAmount: '1000000000000000000',
+            recipient: offerer,
+          },
+        ],
+      },
+    }));
+
+    expect(decoyConsideration.schemaValidated).toBe(true);
+    expect(decoyConsideration.orderSummary?.receiveByOfferer).toHaveLength(0);
+    expect(decoyConsideration.orderSummary?.receiveByOthers[0]?.recipient).toBeUndefined();
+    expect(decoyConsideration.orderSummary?.receiveByOthers[0]?.startAmount).toBeUndefined();
+    expect(decoyConsideration.orderSummary?.zeroReturnToOfferer).toBe(true);
+
+    // 2.PrimaryType Vote only signs proposalId; unsigned offer/consideration decoys must not create an orderSummary.
+    const decoyVote = analyzeTypedData(JSON.stringify({
+      types: {
+        EIP712Domain: [{ name: 'name', type: 'string' }],
+        Vote: [{ name: 'proposalId', type: 'uint256' }],
+      },
+      domain: { name: 'Seaport' },
+      primaryType: 'Vote',
+      message: {
+        proposalId: '1',
+        offer: [{ itemType: 2, token: nft, startAmount: '1' }],
+        consideration: [{ itemType: 0, startAmount: '1', recipient: offerer }],
+      },
+    }));
+
+    expect(decoyVote.riskKind).toBe('unknown');
+    expect(decoyVote.orderSummary).toBeUndefined();
+  });
+
   it('does not pretend unknown typed data is classified', () => {
     const result = analyzeTypedData(
       JSON.stringify({
