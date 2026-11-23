@@ -1,6 +1,8 @@
-import { erc20Abi, erc721Abi, zeroAddress, type Address, type PublicClient } from 'viem';
+import { AbiDecodingZeroDataError, BaseError, erc20Abi, erc721Abi, parseAbi, zeroAddress, type Address, type PublicClient } from 'viem';
 import type { Approval } from './useApprovals';
 import { PERMIT2_ADDRESS, permit2Abi } from './permit2';
+
+const legacyApproveAbi = parseAbi(['function approve(address spender, uint256 amount)']);
 
 export type RevokeCall =
   | {
@@ -105,5 +107,27 @@ export async function isApprovalCleared(
       });
       return amount === 0n;
     }
+  }
+}
+
+export async function simulateRevoke(client: PublicClient, account: Address, call: RevokeCall) {
+  const parameters = {
+    account, address: call.address, abi: call.abi, functionName: call.functionName, args: call.args,
+  } as const;
+
+  try {
+    const { request, result } = await client.simulateContract(parameters);
+    if (result === false) throw new Error('合约拒绝清除授权');
+    return request;
+  } catch (error) {
+    if (call.kind !== 'erc20' || !(error instanceof BaseError) ||
+      !(error.walk((cause) => cause instanceof AbiDecodingZeroDataError) instanceof AbiDecodingZeroDataError)) {
+      throw error;
+    }
+
+    // The call succeeded with empty return data. Some older tokens use approve without a return value.
+    const code = await client.getCode({ address: call.address });
+    if (!code || code === '0x') throw error;
+    return { account, address: call.address, abi: legacyApproveAbi, functionName: call.functionName, args: call.args } as const;
   }
 }

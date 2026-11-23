@@ -7,9 +7,9 @@ import {
   useSwitchChain,
   useWriteContract,
 } from 'wagmi';
-import type { Address, Hash } from 'viem';
+import type { Abi, Address, Hash } from 'viem';
 import type { Approval } from './useApprovals';
-import { createRevokeCall, isApprovalCleared } from './revoke';
+import { createRevokeCall, isApprovalCleared, simulateRevoke } from './revoke';
 
 export interface VerifiedRevocation {
   owner: Address;
@@ -107,16 +107,9 @@ export function useRevokeApproval({
     setProgress(undefined);
     try {
       if (walletChainId !== chainId) await switchChainAsync({ chainId });
-      const call = createRevokeCall(approval);
-      const parameters = {
-        account, address: call.address, abi: call.abi, functionName: call.functionName, args: call.args,
-      } as const;
-      const { request, result } = await publicClient.simulateContract(parameters);
-      if (result === false) {
-        setPrepareError(new Error('合约拒绝清除授权'));
-        return;
-      }
-      const hash = await writeContractAsync({ ...request, chainId });
+      const request = await simulateRevoke(publicClient, account, createRevokeCall(approval));
+      const abi: Abi = request.abi;
+      const hash = await writeContractAsync({ ...request, abi, chainId });
       await checkRevocation({ owner: account, chainId, hash, approval });
     } catch (error) {
       setPrepareError(error instanceof Error ? error : new Error('撤销交易准备失败'));
